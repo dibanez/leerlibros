@@ -4,6 +4,8 @@ Un lector de libros en **inglés** que te ayuda con las palabras y frases que no
 
 Es una **PWA instalable**: puedes añadirla a la pantalla de inicio de tu móvil y usarla como una app normal, a pantalla completa.
 
+### 👉 Pruébala en vivo: **[dibanez.github.io/leerlibros](https://dibanez.github.io/leerlibros/)**
+
 ---
 
 ## ✨ Características
@@ -35,7 +37,7 @@ python3 -m http.server 8000
 ```
 
 ### En el móvil (instalar como app)
-1. Abre la URL publicada (ver más abajo) en el navegador del móvil.
+1. Abre **[dibanez.github.io/leerlibros](https://dibanez.github.io/leerlibros/)** en el navegador del móvil.
 2. **Android (Chrome):** pulsa el botón **⬇️ Instalar**, o menú ⋮ → *Añadir a pantalla de inicio*.
 3. **iPhone (Safari):** botón *Compartir* → *Añadir a pantalla de inicio*.
 
@@ -44,6 +46,8 @@ Quedará con su icono propio y se abrirá a pantalla completa.
 ---
 
 ## 🌐 Publicar en GitHub Pages
+
+Esta app está publicada en **[dibanez.github.io/leerlibros](https://dibanez.github.io/leerlibros/)**. Para desplegar tu propia copia:
 
 1. Crea un repositorio vacío en GitHub (sin README).
 2. Sube el código:
