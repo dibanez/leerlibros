@@ -609,26 +609,18 @@ function pronounce(url, fallbackText){
   }catch(err){ speak(fallbackText); }
 }
 
-async function lookupWord(word){
-  if(!word){ hidePopup(); return; }
-  const turn = ++lookupSeq;
-  popState = { term: word, trans: '' };
-  pop.innerHTML = `<div class="head"><span class="term">${esc(word)}</span></div><div class="loading">Buscando…</div>`;
-  const [dict, tr] = await Promise.allSettled([ lookupDict(word), lookupTranslation(word) ]);
-  if(turn !== lookupSeq) return;
-  const entry = dict.status==='fulfilled' ? dict.value : null;
-  popState.audio = (entry && entry.audio) || '';
-
-  let html = `<div class="head"><span class="term" lang="en">${esc(word)}</span>`;
+// Builds the popup from whatever has arrived so far.
+function wordPopupHtml(s){
+  const entry = s.entry;
+  let html = `<div class="head"><span class="term" lang="en">${esc(s.word)}</span>`;
   if(entry && entry.phonetic) html += `<span class="phon">${esc(entry.phonetic)}</span>`;
   // say which base form answered, so "running -> run" is not a surprise
   if(entry && entry.matched) html += `<span class="phon">≈ ${esc(entry.matched)}</span>`;
-  const speakTitle = popState.audio ? 'Escuchar la pronunciación' : 'Pronunciar';
+  const speakTitle = (entry && entry.audio) ? 'Escuchar la pronunciación' : 'Pronunciar';
   html += `<button class="spk" data-act="speak" title="${speakTitle}">🔊</button></div>`;
 
-  const trText = tr.status==='fulfilled' ? tr.value : null;
-  popState.trans = trText || '';
-  if(trText) html += `<div class="trans">🇪🇸 ${esc(trText)}</div>`;
+  if(s.trans) html += `<div class="trans">🇪🇸 ${esc(s.trans)}</div>`;
+  else if(s.transPending) html += `<div class="loading">Traduciendo…</div>`;
 
   if(entry && entry.meanings.length){
     entry.meanings.slice(0,3).forEach(m=>{
@@ -638,14 +630,41 @@ async function lookupWord(word){
         if(d.ex) html += `<div class="ex">“${esc(d.ex)}”</div>`;
       });
     });
-  } else if(!trText){
-    const failure = (tr.status==='rejected' && tr.reason) || (dict.status==='rejected' && dict.reason);
-    html += `<div class="err">${esc(errorMessage(failure))}</div>`;
+  } else if(s.dictPending){
+    html += `<div class="loading">Buscando definición…</div>`;
+  } else if(!s.trans && !s.transPending){
+    // nothing at all came back: say why
+    html += `<div class="err">${esc(errorMessage(s.transError || s.dictError))}</div>`;
   }
+
   html += `<div class="row">
     <button class="primary" data-act="save">⭐ Guardar</button>
   </div>`;
-  pop.innerHTML = html;
+  return html;
+}
+
+// The translation and the definition are painted as each arrives, so a slow or
+// dead dictionary no longer holds back the word the reader actually wants.
+function lookupWord(word){
+  if(!word){ hidePopup(); return Promise.resolve(); }
+  const turn = ++lookupSeq;
+  popState = { term: word, trans: '', audio: '' };
+  const state = { word, entry: null, trans: null, dictPending: true, transPending: true,
+                  dictError: null, transError: null };
+  const paint = ()=>{ if(turn === lookupSeq) pop.innerHTML = wordPopupHtml(state); };
+  paint();
+
+  const translating = lookupTranslation(word).then(
+    t => { state.trans = t; popState.trans = t || ''; },
+    e => { state.transError = e; }
+  ).then(()=>{ state.transPending = false; paint(); });
+
+  const defining = lookupDict(word).then(
+    d => { state.entry = d; popState.audio = (d && d.audio) || ''; },
+    e => { state.dictError = e; }
+  ).then(()=>{ state.dictPending = false; paint(); });
+
+  return Promise.all([translating, defining]);
 }
 
 async function lookupPhrase(phrase){
@@ -690,13 +709,27 @@ async function cached(key, fetcher){
 }
 // A word the dictionary genuinely does not know is worth remembering too, so
 // it is not looked up again on every tap. Transient failures throw instead.
+// While the dictionary is unreachable, one lookup pays the timeout and the
+// rest fail instantly: the translation is what the reader is waiting for.
+const DICT_COOLDOWN = 5 * 60 * 1000;
+let dictDownUntil = 0;
+
 async function lookupDict(word){
   const key = 'd:'+word.toLowerCase().trim();
   const hit = await cacheGet(key);
   if(hit) return hit.data;              // data may be null: a known non-word
-  const data = await fetchDict(word);
-  cachePut(key, data);
-  return data;
+  if(Date.now() < dictDownUntil) throw apiError('service', 'El diccionario no responde');
+  try{
+    const data = await fetchDict(word);
+    dictDownUntil = 0;
+    cachePut(key, data);
+    return data;
+  }catch(err){
+    if(err && (err.code === 'network' || err.code === 'timeout' || err.code === 'service')){
+      dictDownUntil = Date.now() + DICT_COOLDOWN;
+    }
+    throw err;
+  }
 }
 function lookupTranslation(text){ return cached('t:'+text.trim(), ()=>translate(text)); }
 
@@ -705,6 +738,23 @@ function lookupTranslation(text){ return cached('t:'+text.trim(), ()=>translate(
 // empty on purpose: the address would be public in this file.
 const MYMEMORY_EMAIL = '';
 
+// No third party gets to hold the reader hostage: a request that has not
+// answered by now is abandoned. dictionaryapi.dev has been seen taking 20s to
+// fail, which froze the popup for every single word.
+const API_TIMEOUT = 6000;
+
+async function apiFetch(url){
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), API_TIMEOUT);
+  try{
+    return await fetch(url, { signal: ctrl.signal });
+  }catch(err){
+    throw apiError(err && err.name === 'AbortError' ? 'timeout' : 'network', 'No hubo respuesta');
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 function apiError(code, message){
   const err = new Error(message);
   err.code = code;
@@ -712,6 +762,7 @@ function apiError(code, message){
 }
 function errorMessage(err){
   if(err && err.code === 'quota') return 'Cuota diaria de traducción agotada. Inténtalo mañana.';
+  if(err && err.code === 'timeout') return 'El servicio tarda demasiado en responder.';
   if(err && err.code === 'network') return 'Sin conexión. Solo funcionan las palabras ya consultadas.';
   if(err && err.code === 'service') return 'El servicio no responde ahora mismo.';
   return 'No se encontró información para esta palabra.';
@@ -764,9 +815,7 @@ function baseForms(word){
 // One request. null means the dictionary answered "no such word"; anything
 // transient throws, so a passing outage is never cached as a miss.
 async function fetchDictEntry(word){
-  let r;
-  try{ r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(word.toLowerCase())); }
-  catch(err){ throw apiError('network', 'Sin conexión'); }
+  const r = await apiFetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(word.toLowerCase()));
   if(r.status === 404) return null;
   if(!r.ok) throw apiError('service', 'El diccionario no responde');
   let data;
@@ -787,9 +836,14 @@ async function fetchDictEntry(word){
 async function fetchDict(word){
   const direct = await fetchDictEntry(word);
   if(direct) return direct;
-  for(const form of baseForms(word)){
-    const hit = await fetchDictEntry(form);
-    if(hit){ hit.matched = form; return hit; }
+  // The likeliest stems come first, and only those are asked: in parallel this
+  // is one extra round trip instead of up to four, without hammering a free API.
+  const forms = baseForms(word).slice(0, 2);
+  if(!forms.length) return null;
+  // A rejection propagates, so a passing failure is never cached as a miss.
+  const tries = await Promise.all(forms.map(fetchDictEntry));
+  for(let i = 0; i < tries.length; i++){
+    if(tries[i]){ tries[i].matched = forms[i]; return tries[i]; }
   }
   return null;
 }
@@ -798,9 +852,7 @@ async function translate(text){
   // MyMemory free translation API (en -> es)
   let url = 'https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair=en|es';
   if(MYMEMORY_EMAIL) url += '&de='+encodeURIComponent(MYMEMORY_EMAIL);
-  let r;
-  try{ r = await fetch(url); }
-  catch(err){ throw apiError('network', 'Sin conexión'); }
+  const r = await apiFetch(url);
   if(!r.ok) throw apiError(r.status === 429 ? 'quota' : 'service', 'El traductor no responde');
   let d;
   try{ d = await r.json(); }catch(err){ throw apiError('service', 'Respuesta ilegible'); }

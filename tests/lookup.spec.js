@@ -74,7 +74,9 @@ test('an inflected word is retried through its base form', async ({ page }) => {
     translate: () => 'corriendo'
   });
   await page.evaluate(() => lookupWord('running'));
-  expect(asked).toEqual(['running', 'run']);
+  expect(asked[0]).toBe('running');            // the word as written comes first
+  expect(asked).toContain('run');              // then its base form
+  expect(asked.length).toBeLessThanOrEqual(3); // and no more than two stems are tried
   await expect(page.locator('#pop .head')).toContainText('≈ run');
   await expect(page.locator('#pop .defn')).toContainText('covered with grit');
 });
@@ -171,4 +173,71 @@ test('a slow reply never overwrites the word the reader moved on to', async ({ p
     return pop.querySelector('.ex').textContent;
   });
   expect(shown).toContain('fast phrase');
+});
+
+test('a dead dictionary does not hold back the translation', async ({ page }) => {
+  // the dictionary hangs; the translation answers straight away.
+  // Registered after openApp so this route takes priority over its stub.
+  await openApp(page, { translate: () => 'polvo' });
+  await page.route('**://api.dictionaryapi.dev/**', () => { /* never fulfilled */ });
+
+  const t0 = Date.now();
+  page.evaluate(() => { showPopupAt(20, 20); lookupWord('dust'); });
+  await expect(page.locator('#pop .trans')).toContainText('polvo');
+  expect(Date.now() - t0).toBeLessThan(4000);          // not the 6s dictionary deadline
+
+  // the definition slot says it is still working, and the word is saveable already
+  await expect(page.locator('#pop .loading')).toContainText('Buscando definición');
+  await expect(page.locator('#pop [data-act="save"]')).toBeVisible();
+});
+
+test('a hanging API is abandoned instead of freezing the popup', async ({ page }) => {
+  await openApp(page, { translate: () => 'polvo' });
+  await page.route('**://api.dictionaryapi.dev/**', () => {});
+  const ms = await page.evaluate(async () => {
+    const t0 = performance.now();
+    await lookupWord('dust');
+    return performance.now() - t0;
+  });
+  expect(ms).toBeGreaterThan(5500);    // it did wait for the deadline
+  expect(ms).toBeLessThan(9000);       // but gave up, instead of hanging for 20s
+});
+
+test('once the dictionary is down, the next words do not pay the timeout again', async ({ page }) => {
+  let asked = 0;
+  await openApp(page, { translate: w => 'trad-' + w });
+  await page.route('**://api.dictionaryapi.dev/**', route => { asked++; route.abort('failed'); });
+
+  await page.evaluate(() => lookupWord('first'));
+  const afterFirst = asked;
+
+  const ms = await page.evaluate(async () => {
+    const t0 = performance.now();
+    await lookupWord('second');
+    return performance.now() - t0;
+  });
+  expect(asked).toBe(afterFirst);                       // the dictionary was not contacted again
+  expect(ms).toBeLessThan(3000);
+  await expect(page.locator('#pop .trans')).toContainText('trad-second');   // translation still works
+});
+
+test('base forms are tried in parallel, not one after another', async ({ page }) => {
+  const started = [];
+  await openApp(page, { translate: () => 'corriendo' });
+  await page.route('**://api.dictionaryapi.dev/**', async route => {
+    const word = decodeURIComponent(route.request().url().split('/').pop());
+    started.push({ word, at: Date.now() });
+    await new Promise(r => setTimeout(r, 300));
+    if (word === 'run') {
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ phonetic: '/rʌn/', meanings: [] }]) });
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
+  await page.evaluate(() => lookupWord('running'));
+
+  const retries = started.slice(1);                     // everything after the direct lookup
+  expect(retries.length).toBeGreaterThan(1);
+  const spread = Math.max(...retries.map(r => r.at)) - Math.min(...retries.map(r => r.at));
+  expect(spread).toBeLessThan(150);                     // fired together, not 300ms apart
 });
