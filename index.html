@@ -4,6 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>LeerLibros · Lector de inglés con ayuda</title>
+<meta name="description" content="Lee libros en inglés y toca cualquier palabra para ver su pronunciación, traducción al español y definición. Gratis, sin registro y funciona sin conexión.">
+<link rel="canonical" href="https://dibanez.github.io/leerlibros/">
+
+<!-- Social preview -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LeerLibros">
+<meta property="og:url" content="https://dibanez.github.io/leerlibros/">
+<meta property="og:title" content="LeerLibros · Lector de inglés con ayuda">
+<meta property="og:description" content="Lee libros en inglés y toca cualquier palabra para ver su pronunciación, traducción al español y definición. Gratis, sin registro y funciona sin conexión.">
+<meta property="og:image" content="https://dibanez.github.io/leerlibros/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Icono de LeerLibros">
+<meta property="og:locale" content="es_ES">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="LeerLibros · Lector de inglés con ayuda">
+<meta name="twitter:description" content="Lee libros en inglés y toca cualquier palabra para ver su pronunciación, traducción al español y definición. Gratis, sin registro y funciona sin conexión.">
+<meta name="twitter:image" content="https://dibanez.github.io/leerlibros/icon-512.png">
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -24,7 +42,31 @@
   gtag('config', 'G-T97RPJ8NTD');
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "LeerLibros",
+  "url": "https://dibanez.github.io/leerlibros/",
+  "description": "Lee libros en inglés y toca cualquier palabra para ver su pronunciación, traducción al español y definición. Gratis, sin registro y funciona sin conexión.",
+  "applicationCategory": "EducationalApplication",
+  "applicationSubCategory": "Aprendizaje de idiomas",
+  "operatingSystem": "Cualquiera con navegador web",
+  "browserRequirements": "Requiere JavaScript",
+  "inLanguage": "es",
+  "image": "https://dibanez.github.io/leerlibros/icon-512.png",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+  "featureList": [
+    "Traducción y definición de cualquier palabra con un toque",
+    "Traducción de frases completas",
+    "Lectura de archivos EPUB y TXT",
+    "Vocabulario guardado con exportación a CSV",
+    "Funciona sin conexión e instalable como app"
+  ]
+}
+</script>
+
 <style>
   :root{
     --bg:#f4f1ea; --panel:#fffdf8; --ink:#2b2620; --muted:#7c7368;
@@ -454,10 +496,34 @@ function handleFiles(files){
   });
 }
 
+// JSZip is only needed to open an EPUB, so it is fetched on first use
+// instead of blocking every page load. The service worker precaches it,
+// so an installed app can still import EPUBs offline.
+const JSZIP_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+const JSZIP_SRI = 'sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==';
+let jszipLoading = null;
+
+function loadJSZip(){
+  if(window.JSZip) return Promise.resolve(window.JSZip);
+  if(!jszipLoading){
+    jszipLoading = new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      s.src = JSZIP_URL;
+      s.integrity = JSZIP_SRI;
+      s.crossOrigin = 'anonymous';
+      s.onload = ()=> window.JSZip ? resolve(window.JSZip) : reject(new Error('JSZip loaded but is missing'));
+      s.onerror = ()=>{ jszipLoading = null; reject(new Error('No se pudo cargar el lector de EPUB')); };
+      document.head.appendChild(s);
+    });
+  }
+  return jszipLoading;
+}
+
 async function loadEpub(file, fallbackTitle){
   try{
     toast('Procesando EPUB…');
-    const zip = await JSZip.loadAsync(file);
+    const JSZipLib = await loadJSZip();
+    const zip = await JSZipLib.loadAsync(file);
     // 1. find OPF via container.xml
     const containerXml = await zip.file('META-INF/container.xml').async('string');
     const cdoc = new DOMParser().parseFromString(containerXml, 'application/xml');
