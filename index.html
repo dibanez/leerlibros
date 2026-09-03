@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; frame-src https://www.googletagmanager.com; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' https://www.googletagmanager.com https://www.google-analytics.com; media-src 'self' https://api.dictionaryapi.dev https://ssl.gstatic.com; connect-src 'self' https://api.dictionaryapi.dev https://api.mymemory.translated.net https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; font-src 'self'; manifest-src 'self'; worker-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; frame-src https://www.googletagmanager.com; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' https://www.googletagmanager.com https://www.google-analytics.com; media-src 'self' https://api.dictionaryapi.dev https://ssl.gstatic.com; connect-src 'self' https://api.dictionaryapi.dev https://en.wiktionary.org https://api.mymemory.translated.net https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; font-src 'self'; manifest-src 'self'; worker-src 'self'">
 <title>LeerLibros · Lector de inglés con ayuda</title>
 <meta name="description" content="Lee libros en inglés y toca cualquier palabra para ver su pronunciación, traducción al español y definición. Gratis, sin registro y funciona sin conexión.">
 <link rel="canonical" href="https://dibanez.github.io/leerlibros/">
@@ -163,6 +163,18 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
     </div>
     <div id="vocabList"></div>
     <div id="vocabEmpty" class="empty hidden">Aún no has guardado palabras. Haz clic en una palabra mientras lees y pulsa “Guardar”.</div>
+  </div>
+</div>
+
+<!-- Install help modal -->
+<div id="installModal" class="modal-bg">
+  <div class="modal">
+    <h2>📲 Instalar LeerLibros</h2>
+    <p class="install-intro">Se añade a tu pantalla de inicio y se abre como una app: a pantalla completa, sin barra del navegador y funcionando sin conexión.</p>
+    <ol class="install-steps" id="installSteps"></ol>
+    <div class="modal-actions">
+      <button class="primary" data-action="closeModal" data-arg="installModal">Entendido</button>
+    </div>
   </div>
 </div>
 

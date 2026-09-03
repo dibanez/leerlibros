@@ -9,11 +9,12 @@ const PLUS = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.t
  *
  * @param {object} opts
  *  - dict:      (word) => entry|null|'404'|'500'   dictionary API reply
+ *  - wiktionary:(word) => {en:[...]}|null|'404'|'500'  fallback dictionary reply
  *  - translate: (text) => string|'quota'|'500'     translation API reply
  *  - onRequest: (url) => void                      called for every stubbed API hit
  */
 async function openApp(page, opts = {}) {
-  const { dict, translate, onRequest } = opts;
+  const { dict, translate, wiktionary, onRequest } = opts;
 
   // Analytics must never be contacted from a test.
   await page.route('**://www.googletagmanager.com/**', route => route.abort());
@@ -25,6 +26,15 @@ async function openApp(page, opts = {}) {
     if (reply === '500') return route.fulfill({ status: 503, body: '{}' });
     if (!reply || reply === '404') return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([reply]) });
+  });
+
+  await page.route('**://en.wiktionary.org/**', async route => {
+    const word = decodeURIComponent(route.request().url().split('/').pop());
+    if (onRequest) onRequest(route.request().url());
+    const reply = wiktionary ? wiktionary(word) : null;
+    if (reply === '500') return route.fulfill({ status: 503, body: '{}' });
+    if (!reply || reply === '404') return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reply) });
   });
 
   await page.route('**://api.mymemory.translated.net/**', async route => {

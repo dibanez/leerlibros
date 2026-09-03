@@ -5,6 +5,12 @@
 (function () {
   window.dataLayer = window.dataLayer || [];
 
+  // Book titles, looked-up words and selected phrases are the reader's own
+  // content. The events are still counted without them; set this to true to
+  // send the values as well.
+  const TRACK_CONTENT = false;
+  const content = value => (TRACK_CONTENT ? value : undefined);
+
   // Parameters left over from an earlier push would stick to the next event,
   // so they are cleared before every push.
   const PARAMS = ['method', 'format', 'book_title', 'direction', 'page_num',
@@ -55,7 +61,9 @@
     if (id === 'donateBtn') return track('donate_click', { method: 'paypal' });
     if (id === 'nextBtn') return trackPageTurn('next');
     if (id === 'prevBtn') return trackPageTurn('prev');
-    if (id === 'selBtn') return track('phrase_translate', { label: cut(String(window.getSelection() || ''), 90) });
+    if (id === 'selBtn') return track('phrase_translate', {
+      label: content(cut(String(window.getSelection() || ''), 90))
+    });
     if (/^A[−\-]$/.test(lb)) return track('font_size', { direction: 'down' });
     if (/^A\+$/.test(lb)) return track('font_size', { direction: 'up' });
     if (/Siguiente/i.test(lb)) return trackPageTurn('next');
@@ -64,18 +72,19 @@
     if (/Subir .*(txt|epub)/i.test(lb)) return track('add_book_start', { method: 'upload' });
     if (/Guardar y leer/i.test(lb)) return track('book_add', {
       method: 'paste', format: 'txt',
-      book_title: cut(($('pasteTitle') || {}).value || '(sin título)')
+      book_title: content(cut(($('pasteTitle') || {}).value || '(sin título)'))
     });
     if (/Vocabulario/i.test(lb)) return track('vocab_open');
     if (/CSV/i.test(lb)) return track('vocab_export', { format: 'csv' });
     if (/Vaciar/i.test(lb)) return track('vocab_clear');
-    if (t.closest('#pop')) return track('word_action', { label: lb, word: window.__llWord });
+    // the label here is the button's own text, not anything from the book
+    if (t.closest('#pop')) return track('word_action', { label: lb, word: content(window.__llWord) });
 
     if (t.closest('#booklist')) {
       // a card opens with the ✕ delete button, so its own text is not the title
       const card = t.closest('.bookcard');
       const title = cut(tx(card && card.querySelector('.title')));
-      return track(t.classList.contains('del') ? 'book_delete' : 'book_select', { book_title: title });
+      return track(t.classList.contains('del') ? 'book_delete' : 'book_select', { book_title: content(title) });
     }
   }, true);
 
@@ -84,7 +93,7 @@
     const el = e.target;
     if (el && el.type === 'file' && el.files && el.files.length) {
       for (const file of el.files) {
-        track('book_add', { method: 'upload', format: ext(file.name), book_title: cut(file.name) });
+        track('book_add', { method: 'upload', format: ext(file.name), book_title: content(cut(file.name)) });
       }
     }
   }, true);
@@ -94,7 +103,7 @@
     const files = e.dataTransfer && e.dataTransfer.files;
     if (!files || !files.length) return;
     for (const file of files) {
-      track('book_add', { method: 'drop', format: ext(file.name), book_title: cut(file.name) });
+      track('book_add', { method: 'drop', format: ext(file.name), book_title: content(cut(file.name)) });
     }
   }, true);
 
@@ -109,7 +118,7 @@
       if (word && word !== last) {
         last = word;
         window.__llWord = word;
-        track('word_lookup', { word });
+        track('word_lookup', { word: content(word) });
       }
     }).observe(pop, {
       attributes: true, childList: true, subtree: true,
@@ -125,7 +134,7 @@
       const now = vis(reader);
       if (now && !wasOpen) {
         secs = 0; hits = {};
-        track('reader_open', { book_title: cut(tx($('readerTitle'))) });
+        track('reader_open', { book_title: content(cut(tx($('readerTitle')))) });
       }
       if (!now && wasOpen) track('reader_close', { minutes: Math.round(secs / 60) });
       wasOpen = now;

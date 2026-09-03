@@ -43,7 +43,8 @@ test('adding a book by pasting is tracked end to end', async ({ page }) => {
   expect(got).toContain('book_add');
   expect(got).toContain('reader_open');
   const added = (await events(page)).find(e => e.ga_event === 'book_add');
-  expect(added).toMatchObject({ method: 'paste', format: 'txt', book_title: 'Mi novela' });
+  expect(added).toMatchObject({ method: 'paste', format: 'txt' });
+  expect(added.book_title).toBeUndefined();          // titles stay on the device
 });
 
 test('page turns report the section the reader landed on', async ({ page }) => {
@@ -59,40 +60,42 @@ test('page turns report the section the reader landed on', async ({ page }) => {
   });
 });
 
-test('a word lookup is tracked once, with the word itself', async ({ page }) => {
+test('a word lookup is tracked once, without the word itself', async ({ page }) => {
   await pasteBook(page, 'L', 'A gritty wind blew hard.');
   await page.locator('#readerText .w', { hasText: /^gritty$/ }).click();
   await expect.poll(async () => (await names(page)).filter(n => n === 'word_lookup').length).toBe(1);
   const ev = (await events(page)).find(e => e.ga_event === 'word_lookup');
-  expect(ev.word).toBe('gritty');
+  expect(ev.word).toBeUndefined();
 
-  // saving from the popup is a word_action carrying the same word
+  // saving from the popup is a word_action, labelled by the button, not the word
   await page.locator('#pop [data-act="save"]').click();
-  expect(await last(page)).toMatchObject({ ga_event: 'word_action', word: 'gritty' });
+  const action = await last(page);
+  expect(action.ga_event).toBe('word_action');
+  expect(action.label).toContain('Guardar');
+  expect(action.word).toBeUndefined();
 });
 
-test('opening and closing the reader is tracked with the book title', async ({ page }) => {
+test('opening and closing the reader is tracked', async ({ page }) => {
   await pasteBook(page, 'Nineteen Eighty-Four', 'It was a bright cold day in April.');
   const opened = (await events(page)).find(e => e.ga_event === 'reader_open');
-  expect(opened.book_title).toBe('Nineteen Eighty-Four');
+  expect(opened.book_title).toBeUndefined();
   await page.locator('[data-action="goLibrary"]').click();
   expect(await last(page)).toMatchObject({ ga_event: 'reader_close', minutes: 0 });
 });
 
-test('a book card reports its title, and deleting it is a different event', async ({ page }) => {
+test('selecting and deleting a book are different events', async ({ page }) => {
   await pasteBook(page, 'Mi novela', 'Some English text long enough to read.');
   await page.locator('[data-action="goLibrary"]').click();
   await page.locator('.bookcard .title').click();
   // opening the card also fires reader_open, so look for the event by name
   const selected = (await events(page)).find(e => e.ga_event === 'book_select');
-  expect(selected).toMatchObject({ book_title: 'Mi novela' });
+  expect(selected).toBeTruthy();
+  expect(selected.book_title).toBeUndefined();
 
   await page.locator('[data-action="goLibrary"]').click();
   page.on('dialog', d => d.accept());
   await page.locator('.bookcard .del').click();
-  await expect.poll(async () => await last(page)).toMatchObject({
-    ga_event: 'book_delete', book_title: 'Mi novela'
-  });
+  await expect.poll(async () => (await last(page)).ga_event).toBe('book_delete');
 });
 
 test('vocabulary actions are tracked', async ({ page }) => {
@@ -139,4 +142,28 @@ test('the donate link points at PayPal, opens safely and is tracked', async ({ p
   (await popup).close();
   const ev = (await events(page)).find(e => e.ga_event === 'donate_click');
   expect(ev).toMatchObject({ method: 'paypal' });
+});
+
+test('book content is counted but not sent to analytics', async ({ page }) => {
+  // through the real buttons: book_add is tracked on the click, not on save
+  await page.locator('[data-action="openPaste"]').click();
+  await page.fill('#pasteTitle', 'Nineteen Eighty-Four');
+  await page.fill('#pasteText', 'A swirl of gritty dust came in with him.');
+  await page.locator('[data-action="savePaste"]').click();
+  await page.locator('#readerText .w', { hasText: /^gritty$/ }).click();
+  await expect(page.locator('#pop .trans')).toBeVisible();
+
+  const evs = await events(page);
+  const names = evs.map(e => e.ga_event);
+  expect(names).toContain('book_add');
+  expect(names).toContain('reader_open');
+  expect(names).toContain('word_lookup');
+
+  // the events are there; the reader's words and titles are not
+  for (const e of evs) {
+    expect(e.book_title).toBeUndefined();
+    expect(e.word).toBeUndefined();
+  }
+  const added = evs.find(e => e.ga_event === 'book_add');
+  expect(added).toMatchObject({ method: 'paste', format: 'txt' });   // still useful
 });

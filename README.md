@@ -41,8 +41,11 @@ python3 -m http.server 8000
 
 ### En el móvil (instalar como app)
 1. Abre **[dibanez.github.io/leerlibros](https://dibanez.github.io/leerlibros/)** en el navegador del móvil.
-2. **Android (Chrome):** pulsa el botón **⬇️ Instalar**, o menú ⋮ → *Añadir a pantalla de inicio*.
-3. **iPhone (Safari):** botón *Compartir* → *Añadir a pantalla de inicio*.
+2. Pulsa el botón **⬇️ Instalar** de la barra superior.
+   - En **Android/Chrome** aparece el diálogo de instalación del navegador.
+   - En **iPhone** no existe ese diálogo (Safari no lo implementa, y en iOS todos
+     los navegadores son Safari por dentro), así que el botón te muestra los pasos:
+     *Compartir* → *Añadir a pantalla de inicio*.
 
 Quedará con su icono propio y se abrirá a pantalla completa.
 
@@ -67,7 +70,7 @@ Esta app está publicada en **[dibanez.github.io/leerlibros](https://dibanez.git
 
 | Necesidad | Servicio (gratuito, sin clave) |
 |-----------|-------------------------------|
-| Definiciones en inglés | [Free Dictionary API](https://dictionaryapi.dev) |
+| Definiciones en inglés | [Free Dictionary API](https://dictionaryapi.dev), con [Wiktionary](https://en.wiktionary.org) de respaldo |
 | Traducción inglés → español | [MyMemory Translation API](https://mymemory.translated.net) |
 | Lectura de archivos `.epub` | [JSZip](https://stuk.github.io/jszip/) |
 | Pronunciación 🔊 | Web Speech API del navegador |
@@ -146,7 +149,7 @@ Peticiones externas que sí se hacen:
 - Las consultas de **definición y traducción** de las palabras y frases que tocas.
 - **Google Tag Manager** (`GTM-5ZB7JTBC`), que carga Google Analytics 4. Además de las visitas, `analytics.js` mide cómo se usa la app: temas, tamaño de letra, cambios de sección, tiempo de lectura, altas y bajas de libros, y acciones de vocabulario.
 
-  Ten en cuenta qué viaja en esos eventos: **el título de cada libro** (o el nombre del archivo que subes), **cada palabra que consultas**, y **hasta 90 caracteres de la frase que seleccionas** para traducir. Son fragmentos, no el libro entero, pero salen de tu dispositivo. Si prefieres que no, borra los parámetros `word`, `label` y `book_title` de `analytics.js`, o quita el `<script src="analytics.js">` de `index.html`.
+  **No se envía nada de tus libros**: ni títulos, ni las palabras que consultas, ni las frases que seleccionas. Los eventos se cuentan sin esos valores. Si algún día quieres incluirlos, pon `TRACK_CONTENT = true` al principio de `analytics.js`.
 
   Un bloqueador de rastreadores desactiva todo esto sin afectar al resto de la app.
 

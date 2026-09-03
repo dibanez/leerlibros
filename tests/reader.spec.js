@@ -171,3 +171,18 @@ test('a section stays a few screens tall on a phone', async ({ page }) => {
   });
   expect(screens).toBeLessThan(12);                     // it used to be over 40
 });
+
+test('the chapter picker groups the parts of each chapter', async ({ page }) => {
+  await importFatEpub(page);
+  const groups = await page.locator('#chapSel optgroup').allTextContents();
+  expect(groups.length).toBeGreaterThan(0);
+  const labels = await page.locator('#chapSel optgroup').evaluateAll(gs => gs.map(g => g.label));
+  expect(labels.some(l => /^CHAPTER /.test(l))).toBe(true);
+  // inside a group the options are just the part numbers, not the title again
+  const inside = await page.locator('#chapSel optgroup option').first().textContent();
+  expect(inside).toMatch(/^\d+\.\s*\d+\/\d+$/);
+  // and picking one still jumps
+  const value = await page.locator('#chapSel optgroup option').nth(1).getAttribute('value');
+  await page.selectOption('#chapSel', value);
+  expect(String(await page.evaluate(() => current.pos))).toBe(value);
+});

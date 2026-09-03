@@ -61,7 +61,8 @@ test('quota, outage and being offline read differently', async ({ page }) => {
   await page.evaluate(() => lookupWord('anything'));
   await expect(page.locator('#pop .err')).toContainText('Cuota diaria');
 
-  await openApp(page, { translate: () => '500', dict: () => '500' });
+  // both dictionaries out as well, so nothing at all comes back
+  await openApp(page, { translate: () => '500', dict: () => '500', wiktionary: () => '500' });
   await page.evaluate(() => lookupWord('anything'));
   await expect(page.locator('#pop .err')).toContainText('no responde');
 });
@@ -111,7 +112,9 @@ test('a word the dictionary confirms it does not know is not asked for twice', a
 });
 
 test('an outage throws instead of being remembered as a missing word', async ({ page }) => {
-  await openApp(page, { dict: () => '500' });
+  // only when both providers are out: a failing primary alone is covered by
+  // the fallback, which is the point of having one
+  await openApp(page, { dict: () => '500', wiktionary: () => '500' });
   const code = await page.evaluate(() => lookupDict('flaky').then(() => null, e => e.code));
   expect(code).toBe('service');
 });
@@ -240,4 +243,85 @@ test('base forms are tried in parallel, not one after another', async ({ page })
   expect(retries.length).toBeGreaterThan(1);
   const spread = Math.max(...retries.map(r => r.at)) - Math.min(...retries.map(r => r.at));
   expect(spread).toBeLessThan(150);                     // fired together, not 300ms apart
+});
+
+const WIKT = (pos, def) => ({ en: [{ partOfSpeech: pos, definitions: [{ definition: def }] }] });
+
+test('when the dictionary is down, Wiktionary answers instead', async ({ page }) => {
+  await openApp(page, { translate: () => 'polvo' });
+  await page.route('**://api.dictionaryapi.dev/**', route => route.abort('failed'));
+  await page.route('**://en.wiktionary.org/**', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify(WIKT('Noun', 'Fine, dry <a href="/wiki/particle">particles</a> of matter &amp; grit'))
+  }));
+
+  await page.evaluate(() => { showPopupAt(20, 20); return lookupWord('dust'); });
+  await expect(page.locator('#pop .defn')).toContainText('Fine, dry particles of matter & grit');
+  await expect(page.locator('#pop .pos')).toHaveText('noun');
+  await expect(page.locator('#pop .trans')).toContainText('polvo');
+  // the HTML links and entities from Wiktionary are stripped, not rendered
+  expect(await page.locator('#pop a').count()).toBe(0);
+});
+
+test('after one failure the fallback is used directly, with no timeout to pay', async ({ page }) => {
+  let primary = 0, fallback = 0;
+  await openApp(page, { translate: () => 'trad' });
+  await page.route('**://api.dictionaryapi.dev/**', route => { primary++; route.abort('failed'); });
+  await page.route('**://en.wiktionary.org/**', route => {
+    fallback++;
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(WIKT('Noun', 'a definition')) });
+  });
+
+  await page.evaluate(() => lookupWord('one'));
+  const afterFirst = primary;
+  const ms = await page.evaluate(async () => {
+    const t0 = performance.now();
+    await lookupWord('two');
+    return performance.now() - t0;
+  });
+  expect(primary).toBe(afterFirst);        // the broken provider is left alone
+  expect(fallback).toBe(2);                // both words answered by Wiktionary
+  expect(ms).toBeLessThan(3000);
+});
+
+test('a word neither dictionary knows is still a confirmed miss', async ({ page }) => {
+  await openApp(page, { translate: () => 'trad' });
+  await page.route('**://api.dictionaryapi.dev/**', route => route.abort('failed'));
+  await page.route('**://en.wiktionary.org/**', route =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: '{}' }));
+  expect(await page.evaluate(() => lookupDict('zzzznotaword'))).toBeNull();
+});
+
+test('the install button is offered even where the browser never prompts', async ({ page }) => {
+  await openApp(page);
+  // no beforeinstallprompt is fired in this context, as on iOS
+  await expect(page.locator('#installBtn')).toBeVisible();
+
+  await page.locator('#installBtn').click();
+  await expect(page.locator('#installModal')).toBeVisible();
+  const steps = await page.locator('#installSteps li').allTextContents();
+  expect(steps.length).toBe(3);
+  expect(steps.join(' ')).toMatch(/pantalla de inicio/i);
+
+  await page.locator('[data-action="closeModal"][data-arg="installModal"]').click();
+  await expect(page.locator('#installModal')).toBeHidden();
+});
+
+test('an iPhone is told to use the Share sheet', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => { window.isIOS = () => true; });
+  const steps = await page.evaluate(() => {
+    showInstallHelp();
+    return [...document.querySelectorAll('#installSteps li')].map(li => li.textContent);
+  });
+  expect(steps[0]).toMatch(/Compartir/);
+});
+
+test('the install button is not shown to an already installed app', async ({ page }) => {
+  await page.addInitScript(() => {
+    const real = window.matchMedia;
+    window.matchMedia = q => /standalone/.test(q) ? { matches: true, addEventListener() {} } : real.call(window, q);
+  });
+  await openApp(page);
+  await expect(page.locator('#installBtn')).toBeHidden();
 });

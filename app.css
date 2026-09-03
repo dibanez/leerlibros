@@ -192,3 +192,8 @@
     display:inline-flex; align-items:center; gap:7px; text-decoration:none;
     font-weight:600; padding:9px 18px; border-radius:30px;
   }
+  /* Install help */
+  .install-intro{margin:0 0 16px; color:var(--muted); font-size:14px; line-height:1.5}
+  .install-steps{margin:0 0 4px; padding-left:22px}
+  .install-steps li{margin-bottom:12px; line-height:1.5}
+  .install-steps b{color:var(--accent)}

@@ -494,12 +494,42 @@ function chapterLabel(i){
   const t = (current.titles||[])[i];
   return t ? (i+1)+'. '+t : 'Sección '+(i+1)+' de '+current.chapters.length;
 }
+
+// "CHAPTER IV. · 2/3" -> "CHAPTER IV." so the parts of one chapter can be
+// gathered under a single heading in the picker.
+function chapterGroup(i){
+  const t = (current.titles||[])[i] || '';
+  const cut = t.lastIndexOf(' · ');
+  return cut > 0 ? t.slice(0, cut) : '';
+}
+
+// A novel can run to a couple of hundred sections. Grouping the parts of each
+// chapter turns a flat wall of options into something you can actually scan.
 function renderChapterNav(){
-  const opts = current.chapters
-    .map((_,i)=>`<option value="${i}">${esc(chapterLabel(i))}</option>`).join('');
+  let html = '';
+  for(let i = 0; i < current.chapters.length; i++){
+    const group = chapterGroup(i);
+    if(!group){
+      html += `<option value="${i}">${esc(chapterLabel(i))}</option>`;
+      continue;
+    }
+    let end = i;
+    while(end + 1 < current.chapters.length && chapterGroup(end + 1) === group) end++;
+    if(end === i){
+      html += `<option value="${i}">${esc(chapterLabel(i))}</option>`;
+    }else{
+      html += `<optgroup label="${esc(group)}">`;
+      for(let j = i; j <= end; j++){
+        const part = ((current.titles||[])[j] || '').slice(group.length + 3) || String(j+1);
+        html += `<option value="${j}">${esc((j+1)+'. '+part)}</option>`;
+      }
+      html += `</optgroup>`;
+      i = end;
+    }
+  }
   CHAP_SELECTS.forEach(id=>{
     const sel = document.getElementById(id);
-    sel.innerHTML = opts;
+    sel.innerHTML = html;
     sel.value = String(current.pos||0);
   });
 }
@@ -788,22 +818,15 @@ async function cached(key, fetcher){
 const DICT_COOLDOWN = 5 * 60 * 1000;
 let dictDownUntil = 0;
 
+const isTransient = err => !!err && ['network','timeout','service'].includes(err.code);
+
 async function lookupDict(word){
   const key = 'd:'+word.toLowerCase().trim();
   const hit = await cacheGet(key);
   if(hit) return hit.data;              // data may be null: a known non-word
-  if(Date.now() < dictDownUntil) throw apiError('service', 'El diccionario no responde');
-  try{
-    const data = await fetchDict(word);
-    dictDownUntil = 0;
-    cachePut(key, data);
-    return data;
-  }catch(err){
-    if(err && (err.code === 'network' || err.code === 'timeout' || err.code === 'service')){
-      dictDownUntil = Date.now() + DICT_COOLDOWN;
-    }
-    throw err;
-  }
+  const data = await fetchDict(word);
+  cachePut(key, data);
+  return data;
 }
 function lookupTranslation(text){ return cached('t:'+text.trim(), ()=>translate(text)); }
 
@@ -888,7 +911,38 @@ function baseForms(word){
 
 // One request. null means the dictionary answered "no such word"; anything
 // transient throws, so a passing outage is never cached as a miss.
-async function fetchDictEntry(word){
+// Wiktionary carries no phonetics or recordings, but it is far more reliable
+// than the primary dictionary and it knows inflected forms as entries of their
+// own. Its definitions arrive as HTML.
+function stripTags(html){
+  return String(html || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (m, e) =>
+      ({ amp:'&', lt:'<', gt:'>', quot:'"', '#39':"'", nbsp:' ' }[e]))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function fetchWiktionary(word){
+  const r = await apiFetch('https://en.wiktionary.org/api/rest_v1/page/definition/'+encodeURIComponent(word.toLowerCase()));
+  if(r.status === 404) return null;
+  if(!r.ok) throw apiError('service', 'El diccionario no responde');
+  let data;
+  try{ data = await r.json(); }catch(err){ throw apiError('service', 'Respuesta ilegible'); }
+  const english = data && data.en;
+  if(!Array.isArray(english) || !english.length) return null;
+  const meanings = english.slice(0,3).map(m=>({
+    pos: (m.partOfSpeech || '').toLowerCase(),
+    defs: (m.definitions || []).slice(0,2).map(d=>({
+      def: stripTags(d.definition),
+      ex: (d.parsedExamples && d.parsedExamples[0]) ? stripTags(d.parsedExamples[0].example) : ''
+    })).filter(d=>d.def)
+  })).filter(m=>m.defs.length);
+  if(!meanings.length) return null;
+  return { phonetic:'', audio:'', meanings, source:'wiktionary' };
+}
+
+async function fetchFreeDictionary(word){
   const r = await apiFetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(word.toLowerCase()));
   if(r.status === 404) return null;
   if(!r.ok) throw apiError('service', 'El diccionario no responde');
@@ -905,6 +959,23 @@ async function fetchDictEntry(word){
     defs: (m.definitions||[]).map(d=>({def:d.definition, ex:d.example}))
   }));
   return { phonetic, audio, meanings };
+}
+
+// The richer provider first; while it is failing, Wiktionary answers instead
+// and the reader keeps getting definitions rather than an empty popup.
+async function fetchDictEntry(word){
+  if(Date.now() >= dictDownUntil){
+    try{
+      const hit = await fetchFreeDictionary(word);
+      dictDownUntil = 0;
+      return hit;                       // null here is a confirmed non-word
+    }catch(err){
+      if(!isTransient(err)) throw err;
+      dictDownUntil = Date.now() + DICT_COOLDOWN;
+      console.warn('Dictionary unavailable, falling back to Wiktionary', err);
+    }
+  }
+  return fetchWiktionary(word);
 }
 
 async function fetchDict(word){
@@ -1291,24 +1362,63 @@ if('serviceWorker' in navigator){
   });
 }
 let deferredPrompt = null;
+
+function isStandalone(){
+  return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+// Safari does not implement beforeinstallprompt, and on iOS every browser is
+// Safari underneath. Adding to the home screen there is manual, so the button
+// has to be offered anyway and explain how.
+function isIOS(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function showInstallButton(on){
+  document.getElementById('installBtn').classList.toggle('hidden', !on);
+}
+
+const INSTALL_STEPS = {
+  ios: ['Pulsa el botón <b>Compartir</b> del navegador (el cuadrado con una flecha hacia arriba).',
+        'Desplázate y elige <b>«Añadir a pantalla de inicio»</b>.',
+        'Confirma con <b>«Añadir»</b>. Ya la tienes junto al resto de tus apps.'],
+  other: ['Abre el <b>menú</b> del navegador (⋮ o ⋯).',
+          'Elige <b>«Instalar aplicación»</b> o <b>«Añadir a pantalla de inicio»</b>.',
+          'Confirma. Se abrirá a pantalla completa, como una app.']
+};
+
+function showInstallHelp(){
+  const steps = INSTALL_STEPS[isIOS() ? 'ios' : 'other'];
+  document.getElementById('installSteps').innerHTML = steps.map(s=>`<li>${s}</li>`).join('');
+  document.getElementById('installModal').style.display = 'flex';
+}
+
 window.addEventListener('beforeinstallprompt', e=>{
-  e.preventDefault(); deferredPrompt = e;
-  document.getElementById('installBtn').classList.remove('hidden');
+  e.preventDefault();
+  deferredPrompt = e;
+  showInstallButton(true);
 });
+
 async function doInstall(){
-  if(!deferredPrompt){
-    toast('Usa el menú del navegador → “Añadir a pantalla de inicio”');
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if(choice && choice.outcome === 'accepted') showInstallButton(false);
     return;
   }
-  deferredPrompt.prompt();
-  await deferredPrompt.userChoice;
-  deferredPrompt = null;
-  document.getElementById('installBtn').classList.add('hidden');
+  // no native prompt here: tell the reader how to do it by hand
+  showInstallHelp();
 }
+
 window.addEventListener('appinstalled', ()=>{
-  document.getElementById('installBtn').classList.add('hidden');
+  showInstallButton(false);
+  closeModal('installModal');
   toast('¡Instalada! Ya la tienes en tu pantalla de inicio 📖');
 });
+
+// Offer it to anyone not already running the installed app, whether or not the
+// browser fires the install event.
+if(!isStandalone()) showInstallButton(true);
 
 /* ============ INIT ============ */
 initBooks()
