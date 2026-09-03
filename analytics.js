@@ -52,6 +52,7 @@
 
     if (id === 'th-light' || id === 'th-sepia' || id === 'th-dark') return track('theme_change', { theme: id.slice(3) });
     if (id === 'installBtn') return track('pwa_install_click');
+    if (id === 'donateBtn') return track('donate_click', { method: 'paypal' });
     if (id === 'nextBtn') return trackPageTurn('next');
     if (id === 'prevBtn') return trackPageTurn('prev');
     if (id === 'selBtn') return track('phrase_translate', { label: cut(String(window.getSelection() || ''), 90) });

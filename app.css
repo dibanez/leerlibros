@@ -182,3 +182,13 @@
   .vocab-item .spk{border:none; background:none; cursor:pointer; font-size:16px; padding:2px 5px}
   .vocab-item .spk:hover{color:var(--accent)}
   .gtm-noscript{display:none; visibility:hidden}
+  /* Support footer: only on the library screen, never over the text */
+  .lib-footer{
+    margin-top:40px; padding-top:24px; border-top:1px solid var(--border);
+    display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center;
+  }
+  .lib-footer p{margin:0; color:var(--muted); font-size:13px}
+  .donate{
+    display:inline-flex; align-items:center; gap:7px; text-decoration:none;
+    font-weight:600; padding:9px 18px; border-radius:30px;
+  }

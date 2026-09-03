@@ -119,3 +119,24 @@ test('a JavaScript error is reported', async ({ page }) => {
   await page.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'algo se rompió' })));
   expect(await last(page)).toMatchObject({ ga_event: 'js_error', label: 'algo se rompió' });
 });
+
+test('the donate link points at PayPal, opens safely and is tracked', async ({ page }) => {
+  const link = page.locator('#donateBtn');
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://www.paypal.com/paypalme/dibanez1979');
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+
+  // it belongs to the library, not over the text you are reading
+  await pasteBook(page, 'L', 'Some English text long enough to read.');
+  await expect(link).toBeHidden();
+  await page.locator('[data-action="goLibrary"]').click();
+  await expect(link).toBeVisible();
+
+  // clicking it reports donate_click without leaving the page open on a popup
+  const popup = page.waitForEvent('popup');
+  await link.click();
+  (await popup).close();
+  const ev = (await events(page)).find(e => e.ga_event === 'donate_click');
+  expect(ev).toMatchObject({ method: 'paypal' });
+});

@@ -152,4 +152,11 @@ Peticiones externas que sí se hacen:
 
 ---
 
+## ❤️ Apoyar el proyecto
+
+La app es gratis, sin anuncios y sin cuentas. Si te resulta útil, hay un botón
+de donación al pie de la biblioteca: **[paypal.me/dibanez1979](https://www.paypal.com/paypalme/dibanez1979)**.
+
+---
+
 Hecho con ❤️ para aprender inglés leyendo.
