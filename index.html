@@ -196,6 +196,12 @@
         📂 Subir .txt / .epub
         <input type="file" accept=".txt,.epub" multiple style="display:none" onchange="handleFiles(this.files)">
       </label>
+      <div class="grow"></div>
+      <button onclick="exportLibrary()" title="Guarda biblioteca y vocabulario en un archivo">💾 Copia</button>
+      <label class="btn" style="display:inline-flex; align-items:center" title="Restaura una copia; se añade a lo que ya tienes">
+        ♻️ Restaurar
+        <input type="file" accept=".json,application/json" style="display:none" onchange="importLibrary(this.files[0]); this.value='';">
+      </label>
     </div>
     <div id="dropzone" class="dropzone">
       Arrastra aquí tus archivos <b>.txt</b> o <b>.epub</b>, o usa los botones de arriba.
@@ -283,14 +289,93 @@ function writeJSON(key, value){
   }
 }
 const DB = {
-  get books(){ return readJSON('ll_books', []); },
-  set books(v){ writeJSON('ll_books', v); },
   get vocab(){ return readJSON('ll_vocab', []); },
   set vocab(v){ writeJSON('ll_vocab', v); },
   get prefs(){ return readJSON('ll_prefs', {}); },
   set prefs(v){ writeJSON('ll_prefs', v); },
 };
 let current = null; // current book being read
+
+/* ============ BOOK STORE (IndexedDB) ============ */
+// One book can be megabytes of text, far past the localStorage quota, so the
+// library lives in IndexedDB. It is mirrored in memory to keep the rendering
+// code synchronous; writes go to disk in the background and report failures.
+const IDB_NAME = 'leerlibros';
+const IDB_STORE = 'books';
+let booksCache = [];  // the library as shown, newest first
+let idb = null;       // null when IndexedDB is unusable -> localStorage fallback
+
+function openIDB(){
+  return new Promise(resolve=>{
+    let req;
+    try{ req = indexedDB.open(IDB_NAME, 1); }
+    catch(err){ console.warn('IndexedDB unavailable', err); return resolve(null); }
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath:'id' });
+    };
+    req.onsuccess = ()=>{
+      const db = req.result;
+      db.onversionchange = ()=>db.close();
+      resolve(db);
+    };
+    req.onerror = ()=>resolve(null);
+    req.onblocked = ()=>resolve(null);
+  });
+}
+
+function idbTx(mode, run){
+  return new Promise((resolve, reject)=>{
+    if(!idb) return reject(new Error('IndexedDB unavailable'));
+    let tx, req;
+    try{
+      tx = idb.transaction(IDB_STORE, mode);
+      req = run(tx.objectStore(IDB_STORE));
+    }catch(err){ return reject(err); }
+    tx.oncomplete = ()=>resolve(req ? req.result : undefined);
+    tx.onerror = ()=>reject(tx.error);
+    tx.onabort = ()=>reject(tx.error);
+  });
+}
+
+function sortBooks(){ booksCache.sort((a,b)=>(b.added||0)-(a.added||0)); }
+
+// Persist one book, or a deletion when removedId is given.
+function persistBook(book, removedId){
+  const done = idb
+    ? idbTx('readwrite', s=> removedId ? s.delete(removedId) : s.put(book))
+    : Promise.resolve(writeJSON('ll_books', booksCache));
+  return done.catch(err=>{
+    console.error('Book save failed', err);
+    toast('No se pudo guardar la biblioteca.');
+  });
+}
+
+async function initBooks(){
+  idb = await openIDB();
+  if(idb){
+    try{ booksCache = (await idbTx('readonly', s=>s.getAll())) || []; }
+    catch(err){ console.error('IndexedDB read failed', err); idb = null; }
+  }
+  const legacy = readJSON('ll_books', []);
+  if(!idb){
+    booksCache = legacy;  // fallback: keep working straight off localStorage
+  } else if(legacy.length){
+    // One-time migration of a library written by the localStorage version.
+    const known = new Set(booksCache.map(b=>b.id));
+    const base = Date.now();
+    const incoming = legacy
+      .filter(b=>b && typeof b === 'object' && !known.has(b.id))
+      .map((b,i)=>Object.assign({ added: base-i }, b));
+    try{
+      if(incoming.length) await idbTx('readwrite', s=>{ incoming.forEach(b=>s.put(b)); });
+      booksCache = booksCache.concat(incoming);
+      localStorage.removeItem('ll_books');  // dropped only once safely copied
+    }catch(err){ console.error('Library migration failed', err); }
+  }
+  booksCache.forEach(b=>{ if(!b.added) b.added = 0; });
+  sortBooks();
+}
 
 /* ============ THEME & FONT ============ */
 function setTheme(t){
@@ -321,7 +406,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 
 function renderLibrary(){
   const list = document.getElementById('booklist');
-  const books = DB.books;
+  const books = booksCache;
   list.innerHTML = '';
   document.getElementById('libEmpty').classList.toggle('hidden', books.length>0);
   books.forEach(b=>{
@@ -342,16 +427,16 @@ function renderLibrary(){
 
 function deleteBook(id){
   if(!confirm('¿Eliminar este libro de tu biblioteca?')) return;
-  DB.books = DB.books.filter(b=>b.id!==id);
+  booksCache = booksCache.filter(b=>b.id!==id);
+  persistBook(null, id);
   renderLibrary();
 }
 
 function saveBook(title, chapters){
   const words = chapters.join(' ').split(/\s+/).filter(Boolean).length;
-  const books = DB.books;
-  const book = { id:uid(), title:title||'Sin título', chapters, pos:0, words };
-  books.unshift(book);
-  DB.books = books;
+  const book = { id:uid(), title:title||'Sin título', chapters, pos:0, words, added:Date.now() };
+  booksCache.unshift(book);
+  persistBook(book);
   renderLibrary();
   return book;
 }
@@ -446,7 +531,7 @@ function splitChapters(text){
 
 /* ============ READER ============ */
 function openBook(id){
-  current = DB.books.find(b=>b.id===id);
+  current = booksCache.find(b=>b.id===id);
   if(!current) return;
   document.getElementById('library').style.display='none';
   document.getElementById('reader').style.display='block';
@@ -494,9 +579,8 @@ function wrapWords(str, savedSet){
 function prevChapter(){ if(current.pos>0){ current.pos--; persistPos(); renderChapter(); window.scrollTo(0,0); } }
 function nextChapter(){ if(current.pos<current.chapters.length-1){ current.pos++; persistPos(); renderChapter(); window.scrollTo(0,0); } }
 function persistPos(){
-  const books = DB.books;
-  const b = books.find(x=>x.id===current.id);
-  if(b){ b.pos = current.pos; DB.books = books; }
+  const b = booksCache.find(x=>x.id===current.id);
+  if(b){ b.pos = current.pos; persistBook(b); }
 }
 
 /* ============ LOOKUP (word & phrase) ============ */
@@ -727,10 +811,107 @@ function exportVocab(){
   if(!vocab.length){ toast('No hay nada que exportar'); return; }
   const csv = 'term,translation,date\n'+vocab.map(v=>
     `"${v.term.replace(/"/g,'""')}","${(v.trans||'').replace(/"/g,'""')}","${v.date||''}"`).join('\n');
-  const blob = new Blob([csv],{type:'text/csv'});
+  downloadBlob(new Blob([csv],{type:'text/csv'}), 'vocabulario.csv');
+}
+
+/* ============ BACKUP (export / import) ============ */
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download='vocabulario.csv'; a.click();
-  URL.revokeObjectURL(a.href);
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+function exportLibrary(){
+  const vocab = DB.vocab;
+  if(!booksCache.length && !vocab.length){ toast('No hay nada que exportar'); return; }
+  const backup = {
+    format: 'leerlibros-backup',
+    version: 1,
+    exported: new Date().toISOString(),
+    books: booksCache,
+    vocab,
+    prefs: DB.prefs
+  };
+  downloadBlob(new Blob([JSON.stringify(backup)], {type:'application/json'}),
+               'leerlibros-'+new Date().toISOString().slice(0,10)+'.json');
+  toast('Copia guardada · '+booksCache.length+' libros');
+}
+
+// A backup file is user data from another device: validate every field.
+function cleanBook(b){
+  if(!b || typeof b !== 'object') return null;
+  const chapters = Array.isArray(b.chapters) ? b.chapters.filter(c=>typeof c === 'string') : [];
+  if(!chapters.length) return null;
+  return {
+    id: (typeof b.id === 'string' && b.id) ? b.id : uid(),
+    title: (typeof b.title === 'string' && b.title.trim()) ? b.title.trim() : 'Sin título',
+    chapters,
+    pos: Number.isInteger(b.pos) ? Math.min(Math.max(b.pos, 0), chapters.length-1) : 0,
+    words: Number.isFinite(b.words) ? b.words : chapters.join(' ').split(/\s+/).filter(Boolean).length,
+    added: Number.isFinite(b.added) ? b.added : Date.now()
+  };
+}
+function cleanVocabItem(v){
+  if(!v || typeof v !== 'object' || typeof v.term !== 'string' || !v.term.trim()) return null;
+  return {
+    term: v.term.trim(),
+    trans: typeof v.trans === 'string' ? v.trans : '',
+    date: typeof v.date === 'string' ? v.date : new Date().toISOString().slice(0,10)
+  };
+}
+
+// Import merges: whatever is already in the library is never overwritten.
+async function importLibrary(file){
+  if(!file) return;
+  let data;
+  try{ data = JSON.parse(await file.text()); }
+  catch(err){ console.error(err); toast('No se pudo leer el archivo'); return; }
+  if(!data || typeof data !== 'object' || !Array.isArray(data.books)){
+    toast('Ese archivo no es una copia de LeerLibros'); return;
+  }
+
+  const known = new Set(booksCache.map(b=>b.id));
+  const newBooks = data.books.map(cleanBook).filter(b=>b && !known.has(b.id));
+  if(newBooks.length){
+    booksCache = booksCache.concat(newBooks);
+    sortBooks();
+    try{
+      if(idb) await idbTx('readwrite', s=>{ newBooks.forEach(b=>s.put(b)); });
+      else writeJSON('ll_books', booksCache);
+    }catch(err){
+      console.error('Import failed', err);
+      toast('No se pudieron guardar los libros importados');
+    }
+  }
+
+  let newWords = 0;
+  if(Array.isArray(data.vocab)){
+    const vocab = DB.vocab;
+    const seen = new Set(vocab.map(v=>String(v.term||'').toLowerCase()));
+    data.vocab.map(cleanVocabItem).forEach(v=>{
+      if(!v || seen.has(v.term.toLowerCase())) return;
+      seen.add(v.term.toLowerCase());
+      vocab.push(v); newWords++;
+    });
+    if(newWords) DB.vocab = vocab;
+  }
+
+  if(data.prefs && typeof data.prefs === 'object'){
+    if(['light','sepia','dark'].includes(data.prefs.theme)) setTheme(data.prefs.theme);
+    if(Number.isFinite(data.prefs.fs)){
+      const p = DB.prefs;
+      p.fs = Math.min(34, Math.max(14, data.prefs.fs));
+      DB.prefs = p;
+      document.documentElement.style.setProperty('--fs', p.fs+'px');
+    }
+  }
+
+  renderLibrary();
+  if(current) renderChapter();
+  if(!newBooks.length && !newWords) toast('Esa copia ya estaba en tu biblioteca');
+  else toast('Importado · '+newBooks.length+' libros y '+newWords+' palabras');
 }
 
 /* ============ MODALS ============ */
@@ -800,7 +981,9 @@ window.addEventListener('appinstalled', ()=>{
 });
 
 /* ============ INIT ============ */
-renderLibrary();
+initBooks()
+  .catch(err=>console.error('Library init failed', err))
+  .then(renderLibrary);
 </script>
 </body>
 </html>

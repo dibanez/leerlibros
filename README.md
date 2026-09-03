@@ -21,7 +21,8 @@ Es una **PWA instalable**: puedes añadirla a la pantalla de inicio de tu móvil
 - **Ayuda con frases** — selecciona varias palabras y traduce la frase completa.
 - **Vocabulario** — guarda palabras y frases con ⭐; las guardadas quedan subrayadas mientras lees. Repásalas y expórtalas a CSV.
 - **Comodidad de lectura** — temas claro ☀️ / sepia 📜 / oscuro 🌙, tamaño de texto ajustable y navegación con flechas ← →.
-- **Memoria** — tu biblioteca, tu progreso y tu vocabulario se guardan en el navegador (`localStorage`). Recuerda por dónde ibas en cada libro.
+- **Memoria** — tu biblioteca, tu progreso y tu vocabulario se guardan en el navegador. Recuerda por dónde ibas en cada libro.
+- **Copias de seguridad** — 💾 exporta biblioteca, vocabulario y preferencias a un archivo `.json`, y ♻️ restáuralo en otro dispositivo o después de borrar los datos del navegador. Al restaurar se **añade** a lo que ya tengas, nunca se sobrescribe.
 - **Funciona sin conexión** — la interfaz se cachea mediante un *service worker*. (Las traducciones y definiciones sí necesitan internet.)
 
 ---
@@ -91,7 +92,9 @@ favicon.png
 
 ## 🔒 Privacidad
 
-Tus libros, tu progreso y tu vocabulario se guardan **solo en tu navegador**. No hay servidor propio ni cuentas: el texto de tus libros no sale nunca de tu dispositivo.
+Tus libros, tu progreso y tu vocabulario se guardan **solo en tu navegador** — los libros en IndexedDB (sin el límite de ~5 MB de `localStorage`) y el resto en `localStorage`. No hay servidor propio ni cuentas: el texto de tus libros no sale nunca de tu dispositivo.
+
+> 💡 Como todo vive en el navegador, borrar los datos del sitio se lo lleva todo. Usa **💾 Copia** de vez en cuando.
 
 Peticiones externas que sí se hacen:
 

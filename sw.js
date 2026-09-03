@@ -1,5 +1,5 @@
 /* LeerLibros service worker — app-shell offline cache */
-const CACHE = 'leerlibros-v3';
+const CACHE = 'leerlibros-v4';
 const ASSETS = [
   './',
   './index.html',
