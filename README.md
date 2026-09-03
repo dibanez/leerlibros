@@ -151,10 +151,6 @@ Peticiones externas que sí se hacen:
 - Las consultas de **definición y traducción** de las palabras y frases que tocas.
 - **Google Tag Manager** (`GTM-5ZB7JTBC`), que carga Google Analytics 4. Además de las visitas, `analytics.js` mide cómo se usa la app: temas, tamaño de letra, cambios de sección, tiempo de lectura, altas y bajas de libros, y acciones de vocabulario.
 
-  Ten en cuenta qué viaja en esos eventos: **el título de cada libro** (o el nombre del archivo que subes), **cada palabra que consultas o escuchas**, y **hasta 90 caracteres de la frase que seleccionas**. Son fragmentos, no el libro entero, pero salen de tu dispositivo. Para desactivarlo, pon `TRACK_CONTENT = false` al principio de `analytics.js`: los eventos se siguen contando, sin esos valores.
-
-  Un bloqueador de rastreadores desactiva todo esto sin afectar al resto de la app.
-
 ---
 
 ## ❤️ Apoyar el proyecto
