@@ -142,7 +142,7 @@ incrustado. Los botones se manejan con `data-action` y un único listener.
 
 ## 🔒 Privacidad
 
-Tus libros, tu progreso y tu vocabulario se guardan **solo en tu navegador** — los libros en IndexedDB (sin el límite de ~5 MB de `localStorage`) y el resto en `localStorage`. No hay servidor propio ni cuentas: **el contenido de tus libros no se sube a ninguna parte**.
+Tus libros, tu progreso y tu vocabulario se guardan **solo en tu navegador** — los libros en IndexedDB (sin el límite de ~5 MB de `localStorage`) y el resto en `localStorage`. No hay servidor propio ni cuentas: **el texto completo de tus libros no se sube a ninguna parte**.
 
 > 💡 Como todo vive en el navegador, borrar los datos del sitio se lo lleva todo. Usa **💾 Copia** de vez en cuando.
 
