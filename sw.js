@@ -1,16 +1,19 @@
 /* LeerLibros service worker — app-shell offline cache */
-const CACHE = 'leerlibros-v10';
+const CACHE = 'leerlibros-v11';
 const HTML_TIMEOUT = 3000; // on lie-fi, fall back to cache instead of hanging
 const ASSETS = [
   './',
   './index.html',
+  './app.css',
+  './app.js',
+  './gtm.js',
+  './vendor/jszip.min.js',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
   './icon-maskable-512.png',
   './apple-touch-icon.png',
-  './favicon.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
+  './favicon.png'
 ];
 
 self.addEventListener('install', e => {
@@ -78,13 +81,13 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Icons, manifest, JSZip: cache-first, fall back to network and store.
-  // These only change with a new CACHE version, which wipes the old one.
+  // Styles, scripts, icons, manifest: cache-first, fall back to network and
+  // store. These only change with a new CACHE version, which wipes the old one.
   e.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;
       return fetch(req).then(res => {
-        if (res && res.status === 200 && (url.origin === location.origin || /cdnjs\.cloudflare\.com/.test(url.host))) {
+        if (res && res.status === 200 && url.origin === location.origin) {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put(req, copy));
         }

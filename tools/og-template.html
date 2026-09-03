@@ -1,0 +1,65 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<style>
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    width:1200px; height:630px; overflow:hidden; display:flex; align-items:center;
+    background:#f4f1ea; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color:#2b2620; position:relative;
+  }
+  body::after{
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(1100px 520px at 82% 50%, rgba(154,91,52,.10), transparent 70%);
+  }
+  .left{width:590px; padding:0 0 0 72px; position:relative; z-index:2}
+  .brand{display:flex; align-items:center; gap:16px; margin-bottom:34px}
+  .brand img{width:76px; height:76px; border-radius:18px; box-shadow:0 6px 20px rgba(60,45,25,.18)}
+  .brand .name{font-size:44px; font-weight:800; letter-spacing:-.5px}
+  .brand .name span{color:#9a5b34}
+  h1{font-size:50px; line-height:1.14; font-weight:800; letter-spacing:-1.2px; margin-bottom:22px; white-space:nowrap}
+  h1 em{font-style:normal; color:#9a5b34; border-bottom:6px solid rgba(154,91,52,.32); padding-bottom:2px}
+  p.sub{font-size:24px; line-height:1.45; color:#6d6459; max-width:480px}
+  .url{
+    position:absolute; left:72px; bottom:56px; font-size:19px; font-weight:600;
+    color:#9a5b34; letter-spacing:.2px; z-index:2;
+  }
+  .right{flex:1; display:flex; justify-content:center; padding-right:66px; position:relative; z-index:2}
+  .page{
+    width:430px; background:#fffdf8; border:1px solid #e2d9c9; border-radius:20px;
+    box-shadow:0 24px 60px rgba(60,45,25,.20); padding:38px 40px; position:relative;
+    transform:rotate(-1.4deg);
+  }
+  .page h2{font-family:Georgia,serif; font-size:27px; margin-bottom:20px}
+  .page p{font-family:Georgia,serif; font-size:21px; line-height:1.72; color:#2b2620}
+  .page .hit{border-bottom:3px solid #9a5b34; padding:0 2px; border-radius:3px; background:rgba(154,91,52,.10)}
+  .pop{
+    position:absolute; right:-46px; bottom:-54px; width:286px; background:#fffdf8;
+    border:1px solid #e2d9c9; border-radius:16px; box-shadow:0 18px 44px rgba(60,45,25,.26);
+    padding:16px 18px; transform:rotate(1.4deg);
+  }
+  .pop .row1{display:flex; align-items:baseline; gap:9px; margin-bottom:9px}
+  .pop .w{font-size:22px; font-weight:800; color:#9a5b34}
+  .pop .ph{font-size:15px; color:#8b8175}
+  .pop .tr{background:#e9dcc9; border-radius:10px; padding:9px 12px; font-size:18px; margin-bottom:9px}
+  .pop .df{font-size:14px; color:#6d6459; line-height:1.4}
+</style></head><body>
+  <div class="left">
+    <div class="brand">
+      <img src="../icon-512.png" alt="">
+      <div class="name">Leer<span>Libros</span></div>
+    </div>
+    <h1>Lee en inglés.<br>Toca <em>cualquier palabra</em>.</h1>
+    <p class="sub">Pronunciación, traducción y definición al instante. Gratis, sin registro y funciona sin conexión.</p>
+  </div>
+  <div class="url">dibanez.github.io/leerlibros</div>
+  <div class="right">
+    <div class="page">
+      <h2>Chapter One</h2>
+      <p>A swirl of <span class="hit">gritty</span> dust came in with him. It was a bright cold day in April, and the clocks were striking thirteen.</p>
+      <div class="pop">
+        <div class="row1"><span class="w">gritty</span><span class="ph">/ˈɡrɪti/</span></div>
+        <div class="tr">🇪🇸 áspero, arenoso</div>
+        <div class="df">• containing or covered with grit</div>
+      </div>
+    </div>
+  </div>
+</body></html>

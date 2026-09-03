@@ -82,19 +82,55 @@ Esta app está publicada en **[dibanez.github.io/leerlibros](https://dibanez.git
 ## 📁 Estructura
 
 ```
-index.html              · La aplicación completa (UI + lógica)
-manifest.webmanifest    · Metadatos de la PWA
+index.html              · Estructura de la página
+app.css                 · Todos los estilos
+app.js                  · Toda la lógica
+gtm.js                  · Arranque de Google Tag Manager
 sw.js                   · Service worker (cache offline)
+vendor/jszip.min.js     · JSZip 3.10.1, servido desde el propio sitio
+manifest.webmanifest    · Metadatos de la PWA
 sitemap.xml             · Sitemap para buscadores
 robots.txt              · Solo útil si algún día sirves la app desde la raíz de un dominio
-icon-192.png            · Iconos de la app
-icon-512.png
-icon-maskable-512.png
-apple-touch-icon.png
+icon-*.png              · Iconos de la app
 favicon.png
-screenshot-narrow.png   · Capturas para la ficha de instalación
-screenshot-wide.png
+apple-touch-icon.png
+og-image.png            · Imagen de previsualización al compartir el enlace
+screenshot-*.png        · Capturas para la ficha de instalación
+tools/og-template.html  · Plantilla con la que se genera og-image.png
+tests/                  · Suite de Playwright
 ```
+
+No hay ningún paso de compilación: los ficheros que ves son los que se sirven.
+
+---
+
+## 🧪 Desarrollo y tests
+
+```bash
+npm install                     # solo la primera vez
+npx playwright install chromium # solo la primera vez
+npm test                        # 53 tests en ~10 s
+npm run test:ui                 # modo interactivo
+npm run serve                   # sirve la app en localhost:8000
+```
+
+Los tests levantan un servidor estático y conducen un Chromium real: cubren el
+lector, la carga de EPUB con su índice, el caché de consultas, el repaso con
+repetición espaciada, IndexedDB, las copias de seguridad, el funcionamiento sin
+conexión y los metadatos. **No tocan la red**: las APIs de diccionario y
+traducción están simuladas, así que la suite es determinista y también pasa
+estando desconectado. Se ejecutan solos en cada push mediante GitHub Actions.
+
+---
+
+## 🔐 Seguridad
+
+La página va con una **Content-Security-Policy** estricta, sin `unsafe-inline`
+ni `unsafe-eval`: no queda ni un `<script>` ni un `onclick` ni un `style=""`
+incrustado. Los botones se manejan con `data-action` y un único listener.
+
+> ⚠️ Si añades una etiqueta **HTML personalizada** en Tag Manager, la CSP la
+> bloqueará. Las etiquetas normales (GA4 y demás) funcionan sin tocar nada.
 
 ---
 
