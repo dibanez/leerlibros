@@ -15,6 +15,15 @@
 <meta name="apple-mobile-web-app-title" content="LeerLibros">
 <meta name="mobile-web-app-capable" content="yes">
 
+<!-- Google Analytics (GA4) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-T97RPJ8NTD"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', 'G-T97RPJ8NTD');
+</script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
@@ -249,13 +258,37 @@
 
 <script>
 /* ============ STORAGE ============ */
+// Corrupt or unreadable storage must never break startup: fall back to defaults.
+function readJSON(key, fallback){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return fallback;
+    const val = JSON.parse(raw);
+    if(Array.isArray(fallback) !== Array.isArray(val)) return fallback;
+    return (val && typeof val === 'object') ? val : fallback;
+  }catch(err){
+    console.warn('Unreadable storage for', key, err);
+    return fallback;
+  }
+}
+// Writes fail loudly (quota exceeded) instead of losing data silently.
+function writeJSON(key, value){
+  try{
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  }catch(err){
+    console.error('Storage write failed for', key, err);
+    toast('No se pudo guardar: almacenamiento lleno. Borra algún libro.');
+    return false;
+  }
+}
 const DB = {
-  get books(){ return JSON.parse(localStorage.getItem('ll_books')||'[]'); },
-  set books(v){ localStorage.setItem('ll_books', JSON.stringify(v)); },
-  get vocab(){ return JSON.parse(localStorage.getItem('ll_vocab')||'[]'); },
-  set vocab(v){ localStorage.setItem('ll_vocab', JSON.stringify(v)); },
-  get prefs(){ return JSON.parse(localStorage.getItem('ll_prefs')||'{}'); },
-  set prefs(v){ localStorage.setItem('ll_prefs', JSON.stringify(v)); },
+  get books(){ return readJSON('ll_books', []); },
+  set books(v){ writeJSON('ll_books', v); },
+  get vocab(){ return readJSON('ll_vocab', []); },
+  set vocab(v){ writeJSON('ll_vocab', v); },
+  get prefs(){ return readJSON('ll_prefs', {}); },
+  set prefs(v){ writeJSON('ll_prefs', v); },
 };
 let current = null; // current book being read
 
@@ -297,11 +330,12 @@ function renderLibrary(){
     card.className = 'bookcard';
     card.onclick = ()=>openBook(b.id);
     card.innerHTML = `
-      <button class="del" title="Eliminar" onclick="event.stopPropagation();deleteBook('${b.id}')">✕</button>
+      <button class="del" title="Eliminar">✕</button>
       <div class="title">${esc(b.title)}</div>
       <div class="meta">${b.chapters.length} ${b.chapters.length===1?'sección':'secciones'} · ${b.words||0} palabras</div>
       <div class="prog"><i style="width:${prog}%"></i></div>
     `;
+    card.querySelector('.del').addEventListener('click', e=>{ e.stopPropagation(); deleteBook(b.id); });
     list.appendChild(card);
   });
 }
@@ -380,7 +414,10 @@ function htmlToText(html){
   const doc = new DOMParser().parseFromString(html, 'text/html');
   doc.querySelectorAll('script,style,head').forEach(n=>n.remove());
   const out = [];
-  doc.body && doc.body.querySelectorAll('h1,h2,h3,h4,p,li,blockquote,div').forEach(n=>{
+  const BLOCKS = 'h1,h2,h3,h4,p,li,blockquote,div';
+  doc.body && doc.body.querySelectorAll(BLOCKS).forEach(n=>{
+    // Skip wrappers: their own textContent would repeat the blocks inside them.
+    if(n.querySelector(BLOCKS)) return;
     const t = n.textContent.replace(/\s+/g,' ').trim();
     if(t) out.push(/^h[1-4]$/i.test(n.tagName) ? '## '+t : t);
   });
@@ -446,8 +483,8 @@ function renderChapter(){
 }
 // wrap each word-token in a clickable span, keep punctuation
 function wrapWords(str, savedSet){
-  return str.replace(/[A-Za-zÀ-ÿ]+(?:['’-][A-Za-zÀ-ÿ]+)*|[^A-Za-zÀ-ÿ]+/g, tok=>{
-    if(/^[A-Za-zÀ-ÿ]/.test(tok)){
+  return str.replace(/\p{L}+(?:['’-]\p{L}+)*|[^\p{L}]+/gu, tok=>{
+    if(/^\p{L}/u.test(tok)){
       const cls = savedSet.has(tok.toLowerCase()) ? 'w saved' : 'w';
       return `<span class="${cls}">${esc(tok)}</span>`;
     }
@@ -465,6 +502,28 @@ function persistPos(){
 /* ============ LOOKUP (word & phrase) ============ */
 const pop = document.getElementById('pop');
 
+// The popup never interpolates text into JS: its buttons read the current
+// lookup from popState, so quotes in a book or in an API reply are harmless.
+let popState = { term:'', trans:'' };
+let lookupSeq = 0; // discards replies from a lookup the reader already left
+
+pop.addEventListener('click', e=>{
+  const btn = e.target.closest('[data-act]');
+  if(!btn) return;
+  if(btn.dataset.act === 'speak') speak(popState.term);
+  else if(btn.dataset.act === 'save') saveVocab(popState.term, popState.trans);
+});
+
+document.getElementById('vocabList').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-act]');
+  if(!btn) return;
+  const i = Number(btn.dataset.i);
+  if(btn.dataset.act === 'speak'){
+    const v = DB.vocab[i];
+    if(v) speak(v.term);
+  } else if(btn.dataset.act === 'del') delVocab(i);
+});
+
 document.getElementById('readerText').addEventListener('click', e=>{
   // if user selected a phrase, handle that on mouseup instead
   const sel = window.getSelection();
@@ -472,7 +531,7 @@ document.getElementById('readerText').addEventListener('click', e=>{
   const w = e.target.closest('.w');
   if(!w) return;
   e.stopPropagation();
-  const word = w.textContent.replace(/^[^A-Za-zÀ-ÿ]+|[^A-Za-zÀ-ÿ]+$/g,'');
+  const word = w.textContent.replace(/^[^\p{L}]+|[^\p{L}]+$/gu,'');
   showPopupNear(w);
   lookupWord(word);
 });
@@ -550,17 +609,21 @@ function speak(text){
 
 async function lookupWord(word){
   if(!word){ hidePopup(); return; }
+  const turn = ++lookupSeq;
+  popState = { term: word, trans: '' };
   pop.innerHTML = `<div class="head"><span class="term">${esc(word)}</span></div><div class="loading">Buscando…</div>`;
   const [dict, tr] = await Promise.allSettled([ fetchDict(word), translate(word) ]);
+  if(turn !== lookupSeq) return;
   let html = `<div class="head"><span class="term">${esc(word)}</span>`;
   let phon='';
   if(dict.status==='fulfilled' && dict.value){
     phon = dict.value.phonetic||'';
   }
   if(phon) html += `<span class="phon">${esc(phon)}</span>`;
-  html += `<button class="spk" title="Pronunciar" onclick="speak('${esc(word).replace(/'/g,"\\'")}')">🔊</button></div>`;
+  html += `<button class="spk" data-act="speak" title="Pronunciar">🔊</button></div>`;
 
   const trText = tr.status==='fulfilled' ? tr.value : null;
+  popState.trans = trText || '';
   if(trText) html += `<div class="trans">🇪🇸 ${esc(trText)}</div>`;
 
   if(dict.status==='fulfilled' && dict.value && dict.value.meanings.length){
@@ -575,22 +638,25 @@ async function lookupWord(word){
     html += `<div class="err">No se encontró información para esta palabra.</div>`;
   }
   html += `<div class="row">
-    <button class="primary" onclick="saveVocab('${jsesc(word)}','${jsesc(trText||'')}')">⭐ Guardar</button>
+    <button class="primary" data-act="save">⭐ Guardar</button>
   </div>`;
   pop.innerHTML = html;
 }
 
 async function lookupPhrase(phrase){
-  pop.innerHTML = `<div class="head"><span class="term">Frase</span>
-    <button class="spk" onclick="speak('${jsesc(phrase)}')">🔊</button></div>
-    <div class="ex">“${esc(phrase)}”</div><div class="loading">Traduciendo…</div>`;
-  const tr = await translate(phrase).catch(()=>null);
-  let html = `<div class="head"><span class="term">Frase</span>
-    <button class="spk" onclick="speak('${jsesc(phrase)}')">🔊</button></div>
+  const turn = ++lookupSeq;
+  popState = { term: phrase, trans: '' };
+  const head = `<div class="head"><span class="term">Frase</span>
+    <button class="spk" data-act="speak" title="Pronunciar">🔊</button></div>
     <div class="ex">“${esc(phrase)}”</div>`;
+  pop.innerHTML = head + `<div class="loading">Traduciendo…</div>`;
+  const tr = await translate(phrase).catch(()=>null);
+  if(turn !== lookupSeq) return;
+  popState.trans = tr || '';
+  let html = head;
   if(tr) html += `<div class="trans">🇪🇸 ${esc(tr)}</div>`;
   else html += `<div class="err">No se pudo traducir la frase.</div>`;
-  html += `<div class="row"><button class="primary" onclick="saveVocab('${jsesc(phrase)}','${jsesc(tr||'')}')">⭐ Guardar</button></div>`;
+  html += `<div class="row"><button class="primary" data-act="save">⭐ Guardar</button></div>`;
   pop.innerHTML = html;
 }
 
@@ -601,7 +667,8 @@ async function fetchDict(word){
   const data = await r.json();
   if(!Array.isArray(data)) return null;
   const entry = data[0];
-  let phonetic = entry.phonetic || (entry.phonetics.find(p=>p.text)||{}).text || '';
+  if(!entry) return null;
+  const phonetic = entry.phonetic || ((entry.phonetics||[]).find(p=>p.text)||{}).text || '';
   const meanings = (entry.meanings||[]).map(m=>({
     pos: m.partOfSpeech,
     defs: (m.definitions||[]).map(d=>({def:d.definition, ex:d.example}))
@@ -640,13 +707,15 @@ function openVocab(){
     <div class="vocab-item">
       <span class="vt">${esc(v.term)}</span>
       <span class="vd">${esc(v.trans||'—')}</span>
-      <button class="spk" onclick="speak('${jsesc(v.term)}')" style="border:none;background:none;cursor:pointer">🔊</button>
-      <button class="vdel" onclick="delVocab(${i})">✕</button>
+      <button class="spk" data-act="speak" data-i="${i}" title="Pronunciar" style="border:none;background:none;cursor:pointer">🔊</button>
+      <button class="vdel" data-act="del" data-i="${i}" title="Eliminar">✕</button>
     </div>`).join('');
   document.getElementById('vocabModal').style.display='flex';
 }
 function delVocab(i){
-  const vocab = DB.vocab; vocab.splice(i,1); DB.vocab = vocab;
+  const vocab = DB.vocab;
+  if(!vocab[i]) return;
+  vocab.splice(i,1); DB.vocab = vocab;
   openVocab(); if(current) renderChapter();
 }
 function clearVocab(){
@@ -701,8 +770,8 @@ document.addEventListener('keydown', e=>{
 });
 
 /* ============ UTILS ============ */
+// Safe for text nodes and for double-quoted attribute values.
 function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function jsesc(s){ return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' '); }
 
 /* ============ PWA ============ */
 if('serviceWorker' in navigator){

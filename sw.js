@@ -1,5 +1,5 @@
 /* LeerLibros service worker — app-shell offline cache */
-const CACHE = 'leerlibros-v2';
+const CACHE = 'leerlibros-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -31,8 +31,8 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Never cache the lookup/translation APIs — they need fresh network.
-  if (/dictionaryapi\.dev|mymemory\.translated\.net/.test(url.host)) {
+  // Never cache the lookup/translation APIs or analytics — they need the network.
+  if (/dictionaryapi\.dev|mymemory\.translated\.net|googletagmanager\.com|google-analytics\.com/.test(url.host)) {
     return; // let the browser handle it normally
   }
 
@@ -46,7 +46,9 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(req, copy));
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() => cached || new Response('Sin conexión', {
+        status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      }));
     })
   );
 });
