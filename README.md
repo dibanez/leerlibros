@@ -69,7 +69,7 @@ Esta app está publicada en **[dibanez.github.io/leerlibros](https://dibanez.git
 | Traducción inglés → español | [MyMemory Translation API](https://mymemory.translated.net) |
 | Lectura de archivos `.epub` | [JSZip](https://stuk.github.io/jszip/) |
 | Pronunciación 🔊 | Web Speech API del navegador |
-| Estadísticas de uso | [Google Analytics 4](https://analytics.google.com) (`G-T97RPJ8NTD`) |
+| Estadísticas de uso | [Google Tag Manager](https://tagmanager.google.com) (`GTM-5ZB7JTBC`), con Google Analytics 4 configurado dentro |
 
 > ⚠️ La traducción gratuita de MyMemory tiene un límite diario generoso pero no infinito. Si algún día deja de traducir, suele ser por la cuota.
 
@@ -99,7 +99,7 @@ Tus libros, tu progreso y tu vocabulario se guardan **solo en tu navegador** —
 Peticiones externas que sí se hacen:
 
 - Las consultas de **definición y traducción** de las palabras y frases que tocas.
-- **Google Analytics 4** (`G-T97RPJ8NTD`), para medir visitas de forma agregada. No se le envía ni el contenido de tus libros ni tu vocabulario. Un bloqueador de rastreadores lo desactiva sin afectar al resto de la app.
+- **Google Tag Manager** (`GTM-5ZB7JTBC`), que carga Google Analytics 4 para medir visitas de forma agregada. No se le envía ni el contenido de tus libros ni tu vocabulario. Un bloqueador de rastreadores lo desactiva sin afectar al resto de la app.
 
 ---
 
