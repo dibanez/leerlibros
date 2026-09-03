@@ -102,3 +102,72 @@ test('× and ÷ are separators, not letters', async ({ page }) => {
     [...wrapWords('a×b done ÷ naïve', new Set()).matchAll(/<span class="w">([^<]+)<\/span>/g)].map(m => m[1]));
   expect(words).toEqual(['a', 'b', 'done', 'naïve']);
 });
+
+/** An EPUB shaped like a real one: several chapters per file, one huge paragraph. */
+async function importFatEpub(page) {
+  await page.evaluate(async () => {
+    const JSZipLib = await loadJSZip();
+    const z = new JSZipLib();
+    z.file('META-INF/container.xml', '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="c.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
+    const prose = 'It was a bright cold day in April and the clocks were striking thirteen. '.repeat(60);
+    const letter = 'Two offences of a very different nature and by no means of equal magnitude you last night laid to my charge. '.repeat(130);
+    // one file, three chapters, and a single paragraph of ~14 KB
+    z.file('c1.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml"><body>' +
+      '<h2 style="text-align:center">CHAPTER I.</h2><p style="margin:0">' + prose + '</p>' +
+      '<h2 style="text-align:center">CHAPTER II.</h2><p>' + prose + '</p>' +
+      '<h2 style="text-align:center">CHAPTER III.</h2><p>' + letter + '</p>' +
+      '</body></html>');
+    z.file('c.opf', '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Libro Gordo</dc:title></metadata>' +
+      '<manifest><item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c1"/></spine></package>');
+    await loadEpub(new File([await z.generateAsync({ type: 'blob' })], 'gordo.epub'), 'x');
+  });
+  await expect(page.locator('#reader')).toBeVisible();
+}
+
+test('a fat EPUB file is cut into readable sections, not one endless scroll', async ({ page }) => {
+  await importFatEpub(page);
+  const lens = await page.evaluate(() => current.chapters.map(c => c.length));
+  expect(lens.length).toBeGreaterThan(5);
+  // no section may exceed the limit by more than one indivisible piece
+  expect(Math.max(...lens)).toBeLessThan(4500);
+});
+
+test('several chapters in one EPUB file each get their own name', async ({ page }) => {
+  await importFatEpub(page);
+  const titles = await page.evaluate(() => current.titles);
+  expect(titles.some(t => /^CHAPTER I\./.test(t))).toBe(true);
+  expect(titles.some(t => /^CHAPTER II\./.test(t))).toBe(true);
+  expect(titles.some(t => /^CHAPTER III\./.test(t))).toBe(true);
+  // a chapter that needed splitting says which part you are on
+  expect(titles.some(t => /· \d+\/\d+$/.test(t))).toBe(true);
+});
+
+test('a paragraph longer than a whole section is broken at sentence ends', async ({ page }) => {
+  await importFatEpub(page);
+  const parts = await page.evaluate(() =>
+    current.chapters.filter(c => c.includes('Two offences')).map(c => c.length));
+  expect(parts.length).toBeGreaterThan(3);              // the 14 KB paragraph was split
+  expect(Math.max(...parts)).toBeLessThan(4500);
+  // and it was cut at sentences, not mid-word
+  const cuts = await page.evaluate(() =>
+    current.chapters.filter(c => c.includes('Two offences')).map(c => c.trim().slice(-1)));
+  expect(cuts.every(c => /[.!?"”']/.test(c))).toBe(true);
+});
+
+test('importing an EPUB raises no Content-Security-Policy violation', async ({ page }) => {
+  const violations = [];
+  page.on('console', m => { if (/Content Security Policy/i.test(m.text())) violations.push(m.text()); });
+  await importFatEpub(page);                            // its markup is full of style=""
+  expect(violations).toEqual([]);
+});
+
+test('a section stays a few screens tall on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await importFatEpub(page);
+  const screens = await page.evaluate(() => {
+    const worst = current.chapters.map(c => c.length);
+    goToChapter(worst.indexOf(Math.max(...worst)));
+    return document.documentElement.scrollHeight / window.innerHeight;
+  });
+  expect(screens).toBeLessThan(12);                     // it used to be over 40
+});

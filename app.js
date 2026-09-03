@@ -253,9 +253,11 @@ async function loadEpub(file, fallbackTitle){
       const html = await fileObj.async('string');
       const text = htmlToText(html);
       if(text.trim().length>40){
-        chapters.push(text);
-        // the TOC wins; a section missing from it can still name itself
-        titles.push(tocTitles[normHref(href)] || headingOf(text));
+        // the TOC names the file; the headings inside name each chapter
+        for(const part of splitIntoSections(text, tocTitles[normHref(href)])){
+          chapters.push(part.text);
+          titles.push(part.title);
+        }
       }
     }
     if(!chapters.length){ toast('No se pudo extraer texto del EPUB'); return; }
@@ -265,6 +267,26 @@ async function loadEpub(file, fallbackTitle){
     console.error(e);
     toast('Error leyendo el EPUB: '+e.message);
   }
+}
+
+// One EPUB file often holds several chapters and can run to 60 KB, which on a
+// phone is dozens of screens with no way back. It is cut at its own chapter
+// headings first -- that also recovers the chapters a table of contents only
+// points at by fragment -- and whatever is still too long is capped.
+function splitIntoSections(text, fallbackTitle){
+  const out = [];
+  const blocks = text.split(/\n\n(?=## )/);
+  for(const block of blocks){
+    const heading = headingOf(block);
+    const title = heading || (out.length ? '' : (fallbackTitle || ''));
+    const pieces = splitChapters(block);
+    pieces.forEach((piece, i)=>{
+      let label = title;
+      if(pieces.length > 1) label = title ? title+' · '+(i+1)+'/'+pieces.length : '';
+      out.push({ text: piece, title: label });
+    });
+  }
+  return out;
 }
 
 function normHref(h){ return decodeURIComponent((h||'').split('#')[0].replace(/^\.\//, '')); }
@@ -323,6 +345,10 @@ async function readToc(zip, opf, manifest, opfDir){
 }
 
 function htmlToText(html){
+  // A DOMParser document inherits this page's Content-Security-Policy, so every
+  // style="" in the EPUB is reported as a violation even though nothing is
+  // rendered. Only the text is wanted, so the attributes go before parsing.
+  html = String(html).replace(/\sstyle\s*=\s*("[^"]*"|'[^']*')/gi, '');
   const doc = new DOMParser().parseFromString(html, 'text/html');
   doc.querySelectorAll('script,style,head').forEach(n=>n.remove());
   const out = [];
@@ -341,18 +367,66 @@ function htmlToText(html){
   return out.join('\n\n');
 }
 
+// About three phone screens of reading. Anything much longer turns a section
+// into an endless scroll with no way to keep your place.
+const SECTION_LIMIT = 3500;
+
+// Cuts a run of text at the limit without breaking a word.
+function hardWrap(s){
+  if(s.length <= SECTION_LIMIT) return [s];
+  const out = [];
+  let rest = s;
+  while(rest.length > SECTION_LIMIT){
+    let cut = rest.lastIndexOf(' ', SECTION_LIMIT);
+    if(cut < SECTION_LIMIT / 2) cut = SECTION_LIMIT;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut);
+  }
+  if(rest) out.push(rest);
+  return out;
+}
+
+// A single paragraph can be longer than a whole section -- a letter quoted in
+// full, for instance. Sections used to be capped only between paragraphs, so
+// one of those left a wall of text a dozen screens long. It is cut at sentence
+// ends, and only failing that between words.
+function splitParagraph(para){
+  if(para.length <= SECTION_LIMIT) return [para];
+  const out = [];
+  let buf = '';
+  const push = ()=>{ if(buf.trim()) out.push(buf.trim()); buf = ''; };
+  const sentences = para.match(/[^.!?]+(?:[.!?]+["'”’)\]]*\s*|$)/g) || [para];
+  for(const sentence of sentences){
+    for(const piece of hardWrap(sentence)){
+      if(buf && (buf + piece).length > SECTION_LIMIT) push();
+      buf += piece;
+    }
+  }
+  push();
+  return out.length ? out : [para];
+}
+
 // Split pasted/txt text into reasonable "chapters/pages"
 function splitChapters(text){
   text = text.replace(/\r\n/g,'\n').trim();
   const paras = text.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
   const chapters = [];
   let buf = [], len = 0;
-  const LIMIT = 3500;
-  for(const p of paras){
-    buf.push(p); len += p.length;
-    if(len > LIMIT){ chapters.push(buf.join('\n\n')); buf=[]; len=0; }
+  const flush = ()=>{ if(buf.length){ chapters.push(buf.join('\n\n')); buf = []; len = 0; } };
+  for(const para of paras){
+    for(const piece of splitParagraph(para)){
+      // cut before going over, so the limit is a ceiling and not a floor:
+      // cutting after meant a section could reach twice the intended length
+      if(len && len + piece.length > SECTION_LIMIT) flush();
+      buf.push(piece); len += piece.length;
+    }
   }
-  if(buf.length) chapters.push(buf.join('\n\n'));
+  flush();
+  // a scrap left at the end reads better attached to what came before it
+  if(chapters.length > 1 && chapters[chapters.length-1].length < SECTION_LIMIT / 6){
+    const tail = chapters.pop();
+    chapters[chapters.length-1] += '\n\n' + tail;
+  }
   return chapters.length ? chapters : [text];
 }
 
