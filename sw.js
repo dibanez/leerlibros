@@ -1,5 +1,6 @@
 /* LeerLibros service worker — app-shell offline cache */
-const CACHE = 'leerlibros-v6';
+const CACHE = 'leerlibros-v7';
+const HTML_TIMEOUT = 3000; // on lie-fi, fall back to cache instead of hanging
 const ASSETS = [
   './',
   './index.html',
@@ -26,6 +27,36 @@ self.addEventListener('activate', e => {
   );
 });
 
+function offlineResponse() {
+  return new Response('Sin conexión', {
+    status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+  });
+}
+
+// The whole app is one HTML file, so serving it cache-first meant a new
+// version only showed up on the second load. Navigations now go to the
+// network first and fall back to the cache when it is slow or unreachable.
+// A late reply still refreshes the cache, so nothing is wasted.
+function networkFirst(req) {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = res => { if (!settled) { settled = true; resolve(res); } };
+    const fromCache = () => caches.match(req)
+      .then(hit => hit || caches.match('./index.html'))
+      .then(hit => done(hit || offlineResponse()));
+
+    const timer = setTimeout(fromCache, HTML_TIMEOUT);
+    fetch(req).then(res => {
+      clearTimeout(timer);
+      if (res && res.status === 200) {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(req, copy));
+      }
+      done(res);
+    }).catch(() => { clearTimeout(timer); fromCache(); });
+  });
+}
+
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -36,7 +67,14 @@ self.addEventListener('fetch', e => {
     return; // let the browser handle it normally
   }
 
-  // App shell + JSZip: cache-first, fall back to network and store.
+  // The page itself: always try for a fresh copy.
+  if (req.mode === 'navigate' || (url.origin === location.origin && url.pathname.endsWith('.html'))) {
+    e.respondWith(networkFirst(req));
+    return;
+  }
+
+  // Icons, manifest, JSZip: cache-first, fall back to network and store.
+  // These only change with a new CACHE version, which wipes the old one.
   e.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;
@@ -46,9 +84,7 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(req, copy));
         }
         return res;
-      }).catch(() => cached || new Response('Sin conexión', {
-        status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-      }));
+      }).catch(() => cached || offlineResponse());
     })
   );
 });
