@@ -129,3 +129,45 @@ test('the app still opens with the network gone', async ({ page, context }) => {
   expect(await page.evaluate(() => caches.match('vendor/jszip.min.js').then(r => !!r))).toBe(true);
   await context.setOffline(false);
 });
+
+test('a service worker takeover reloads once, so code and markup match', async ({ page }) => {
+  await openApp(page);
+  const result = await page.evaluate(async () => {
+    let reloads = 0;
+    const realReload = window.reloadPage;
+    window.reloadPage = () => { reloads++; };
+
+    // first install: there was no controller, so nothing is stale
+    hadController = false;
+    onControllerChange();
+    const onFirstInstall = reloads;
+
+    // an update: the page may be running the previous worker's code
+    hadController = true; swReloading = false;
+    onControllerChange();
+    const onUpdate = reloads;
+
+    // and it only ever reloads once
+    onControllerChange();
+    const afterSecondEvent = reloads;
+
+    window.reloadPage = realReload;
+    return { onFirstInstall, onUpdate, afterSecondEvent };
+  });
+  expect(result).toEqual({ onFirstInstall: 0, onUpdate: 1, afterSecondEvent: 1 });
+});
+
+test('a takeover never throws away text the reader just pasted', async ({ page }) => {
+  await openApp(page);
+  const reloads = await page.evaluate(async () => {
+    let n = 0;
+    window.reloadPage = () => { n++; };
+    openPaste();
+    document.getElementById('pasteText').value = 'Un texto a medio pegar';
+    hadController = true; swReloading = false;
+    onControllerChange();
+    return n;
+  });
+  expect(reloads).toBe(0);
+  await expect(page.locator('#toast')).toContainText('versión nueva');
+});

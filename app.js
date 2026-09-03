@@ -1708,7 +1708,30 @@ document.addEventListener('keydown', e=>{
 function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ============ PWA ============ */
+// When a new service worker takes over, the page may still be running the code
+// the previous one handed out -- which is how a deploy can leave new markup
+// driven by old logic. Reloading once puts the two back in step. Reading
+// position is stored, so the reader lands back where they were.
+let swReloading = false;
+let hadController = 'serviceWorker' in navigator && !!navigator.serviceWorker.controller;
+
+function onControllerChange(){
+  if(!hadController || swReloading) return;   // first install: nothing stale to replace
+  const paste = document.getElementById('pasteModal');
+  const typed = document.getElementById('pasteText');
+  if(paste.style.display === 'flex' && typed.value.trim()){
+    toast('Hay una versión nueva. Recarga cuando termines.');
+    return;                                   // never throw away text just pasted
+  }
+  swReloading = true;
+  reloadPage();
+}
+// its own function so the reload can be observed in a test: location.reload
+// itself cannot be replaced
+function reloadPage(){ location.reload(); }
+
 if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW:', e));
   });
