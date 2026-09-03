@@ -124,4 +124,7 @@ function exportedBackup(page) {
   });
 }
 
-module.exports = { openApp, pasteBook, importEpub, booksOnDisk, exportedBackup, TODAY, PLUS };
+/** Whether analytics.js is shipping with the reader's own content included. */
+const tracksContent = page => page.evaluate(() => window.llTrackContent === true);
+
+module.exports = { openApp, pasteBook, importEpub, booksOnDisk, exportedBackup, tracksContent, TODAY, PLUS };

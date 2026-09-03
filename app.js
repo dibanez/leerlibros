@@ -574,7 +574,10 @@ let lookupSeq = 0; // discards replies from a lookup the reader already left
 pop.addEventListener('click', e=>{
   const btn = e.target.closest('[data-act]');
   if(!btn) return;
-  if(btn.dataset.act === 'speak') pronounce(popState.audio, popState.term);
+  if(btn.dataset.act === 'speak'){
+    report('speak', { word: reportContent(popState.term) });
+    pronounce(popState.audio, popState.term);
+  }
   else if(btn.dataset.act === 'save') saveVocab(popState.term, popState.trans);
 });
 
@@ -584,7 +587,7 @@ document.getElementById('vocabList').addEventListener('click', e=>{
   const i = Number(btn.dataset.i);
   if(btn.dataset.act === 'speak'){
     const v = DB.vocab[i];
-    if(v) speak(v.term);
+    if(v){ report('speak', { word: reportContent(v.term) }); speak(v.term); }
   } else if(btn.dataset.act === 'del') delVocab(i);
 });
 
@@ -1087,6 +1090,7 @@ function openReview(){
   }
   closeModal('vocabModal');
   document.getElementById('reviewModal').style.display = 'flex';
+  report('review_open');
   nextCard();
 }
 
@@ -1116,6 +1120,10 @@ function revealCard(){
 function gradeCard(grade){
   if(!revCard) return;
   const c = revCard;
+  report('review_grade', {
+    label: ['again','good','easy'][grade] || String(grade),
+    word: reportContent(c.term)
+  });
   c.ease = Math.max(1.3, Math.min(3, (c.ease || 2.5) + (grade === 0 ? -0.2 : grade === 2 ? 0.15 : 0)));
   if(grade === 0){
     c.reps = 0;
@@ -1141,7 +1149,11 @@ function closeReview(){
   if(current) renderChapter();
 }
 
-document.getElementById('revSpk').addEventListener('click', ()=>{ if(revCard) speak(revCard.term); });
+document.getElementById('revSpk').addEventListener('click', ()=>{
+  if(!revCard) return;
+  report('speak', { word: reportContent(revCard.term) });
+  speak(revCard.term);
+});
 function exportVocab(){
   const vocab = DB.vocab;
   if(!vocab.length){ toast('No hay nada que exportar'); return; }
@@ -1172,6 +1184,7 @@ function exportLibrary(){
   };
   downloadBlob(new Blob([JSON.stringify(backup)], {type:'application/json'}),
                'leerlibros-'+new Date().toISOString().slice(0,10)+'.json');
+  report('library_backup', { method: 'export' });
   toast('Copia guardada · '+booksCache.length+' libros');
 }
 
@@ -1255,6 +1268,7 @@ async function importLibrary(file){
 
   renderLibrary();
   updateDueBadge();
+  report('library_backup', { method: 'import' });
   if(current) renderChapter();
   if(!newBooks.length && !newWords) toast('Esa copia ya estaba en tu biblioteca');
   else toast('Importado · '+newBooks.length+' libros y '+newWords+' palabras');
@@ -1286,6 +1300,16 @@ const dz = document.getElementById('dropzone');
 dz.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
 window.addEventListener('dragover', e=>e.preventDefault());
 window.addEventListener('drop', e=>e.preventDefault());
+
+/* ============ REPORTING ============ */
+// analytics.js is a separate file and a tracker blocker may well remove it:
+// measuring must never break the thing being measured.
+function report(name, params){
+  try{ if(window.llTrack) window.llTrack(name, params); }catch(err){ /* never mind */ }
+}
+// Mirrors the TRACK_CONTENT switch in analytics.js, so one place governs
+// whether the reader's own words leave the device.
+function reportContent(value){ return window.llTrackContent ? value : undefined; }
 
 /* ============ ACTIONS ============ */
 // Every button carries data-action instead of an onclick attribute, so the

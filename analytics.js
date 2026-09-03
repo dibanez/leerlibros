@@ -6,10 +6,11 @@
   window.dataLayer = window.dataLayer || [];
 
   // Book titles, looked-up words and selected phrases are the reader's own
-  // content. The events are still counted without them; set this to true to
-  // send the values as well.
-  const TRACK_CONTENT = false;
+  // content. Set this to false to keep counting the events without them.
+  const TRACK_CONTENT = true;
   const content = value => (TRACK_CONTENT ? value : undefined);
+  // read by the test suite, so the gate is checked in whichever mode ships
+  window.llTrackContent = TRACK_CONTENT;
 
   // Parameters left over from an earlier push would stick to the next event,
   // so they are cleared before every push.
@@ -77,8 +78,13 @@
     if (/Vocabulario/i.test(lb)) return track('vocab_open');
     if (/CSV/i.test(lb)) return track('vocab_export', { format: 'csv' });
     if (/Vaciar/i.test(lb)) return track('vocab_clear');
-    // the label here is the button's own text, not anything from the book
-    if (t.closest('#pop')) return track('word_action', { label: lb, word: content(window.__llWord) });
+    if (t.closest('#pop')) {
+      // data-act is a stable identifier; the visible text carries an emoji and
+      // would split the reports in two the day it changes
+      const act = t.dataset.act || (t.closest('[data-act]') || {}).dataset?.act;
+      if (act === 'speak') return;          // reported as its own 'speak' event
+      return track('word_action', { label: act || 'other', word: content(window.__llWord) });
+    }
 
     if (t.closest('#booklist')) {
       // a card opens with the ✕ delete button, so its own text is not the title
@@ -136,7 +142,9 @@
         secs = 0; hits = {};
         track('reader_open', { book_title: content(cut(tx($('readerTitle')))) });
       }
-      if (!now && wasOpen) track('reader_close', { minutes: Math.round(secs / 60) });
+      // to one decimal: whole minutes reported every session under 30s as 0,
+      // and made 40s and 80s indistinguishable
+      if (!now && wasOpen) track('reader_close', { minutes: Math.round(secs / 6) / 10 });
       wasOpen = now;
     }).observe(reader, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
   }
