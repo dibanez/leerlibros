@@ -18,6 +18,8 @@
                   'word', 'theme', 'minutes', 'label'];
 
   function track(name, params) {
+    // nothing is measured until the reader has accepted analytics cookies
+    if (!window.llConsent || window.llConsent() !== 'granted') return;
     const clear = {};
     PARAMS.forEach(k => { clear[k] = undefined; });
     dataLayer.push(clear);

@@ -164,6 +164,63 @@ async function initBooks(){
   sortBooks();
 }
 
+/* ============ CONSENT ============ */
+// No analytics cookie is set before the reader agrees: gtm.js waits for this,
+// and analytics.js reports nothing without it.
+const CONSENT_KEY = 'll_consent';
+
+function llConsent(){
+  try{ return localStorage.getItem(CONSENT_KEY); }catch(err){ return null; }
+}
+window.llConsent = llConsent;
+
+function dropAnalyticsCookies(){
+  document.cookie.split(';').forEach(entry=>{
+    const name = entry.split('=')[0].trim();
+    if(!/^_ga/.test(name)) return;
+    document.cookie = name+'=; Max-Age=0; path=/';
+    document.cookie = name+'=; Max-Age=0; path=/; domain='+location.hostname;
+    document.cookie = name+'=; Max-Age=0; path=/; domain=.'+location.hostname;
+  });
+}
+
+function setConsent(value){
+  try{ localStorage.setItem(CONSENT_KEY, value); }catch(err){}
+  document.getElementById('cookieBanner').classList.add('hidden');
+  paintConsent();
+  if(value === 'granted'){
+    if(window.loadGTM) window.loadGTM();
+    toast('Gracias, se han activado las estadísticas');
+  }else{
+    dropAnalyticsCookies();
+    toast('Sin cookies de análisis');
+  }
+}
+
+function paintConsent(){
+  const choice = llConsent();
+  const group = document.getElementById('prefConsent');
+  if(group){
+    [...group.querySelectorAll('button')].forEach(b=>{
+      const on = b.dataset.arg === choice;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  const hint = document.getElementById('consentHint');
+  if(hint){
+    hint.textContent = choice === 'granted'
+      ? 'Aceptadas. Google Analytics mide cómo se usa la app; puedes rechazarlas cuando quieras.'
+      : choice === 'denied'
+        ? 'Rechazadas. No se carga Google Analytics ni se guarda ninguna cookie suya.'
+        : 'Aún no has elegido. Mientras tanto no se carga Google Analytics.';
+  }
+}
+
+// Asked once, on the first visit
+if(!llConsent()) document.getElementById('cookieBanner').classList.remove('hidden');
+paintConsent();
+
 /* ============ THEME & FONT ============ */
 function setTheme(t){
   document.body.dataset.theme = t;
@@ -213,6 +270,8 @@ function setReadingPref(arg){
 }
 function openReading(){
   markReadingChoices(DB.prefs);
+  document.getElementById('prefEmail').value = DB.prefs.mmEmail || '';
+  paintConsent();
   openModal('readingModal');
 }
 
@@ -718,6 +777,13 @@ document.getElementById('searchResults').addEventListener('click', e=>{
   });
 });
 let searchT;
+let emailT;
+document.getElementById('prefEmail').addEventListener('input', e=>{
+  clearTimeout(emailT);
+  const value = e.target.value;
+  emailT = setTimeout(()=>saveTranslatorEmail(value), 400);
+});
+
 document.getElementById('searchInput').addEventListener('input', ()=>{
   clearTimeout(searchT);
   searchT = setTimeout(runSearch, 180);
@@ -739,6 +805,7 @@ pop.addEventListener('click', e=>{
     pronounce(popState.audio, popState.term);
   }
   else if(btn.dataset.act === 'save') saveVocab(popState.term, popState.trans);
+  else if(btn.dataset.act === 'settings'){ hidePopup(); openReading(); }
 });
 
 document.getElementById('vocabList').addEventListener('click', e=>{
@@ -901,7 +968,12 @@ function wordPopupHtml(s){
     html += `<div class="loading">Buscando definición…</div>`;
   } else if(!s.trans && !s.transPending){
     // nothing at all came back: say why
-    html += `<div class="err">${esc(errorMessage(s.transError || s.dictError))}</div>`;
+    const failure = s.transError || s.dictError;
+    html += `<div class="err">${esc(errorMessage(failure))}</div>`;
+    // the quota is the one failure the reader can actually do something about
+    if(failure && failure.code === 'quota'){
+      html += `<div class="row"><button data-act="settings">⚙️ Ampliar el límite</button></div>`;
+    }
   }
 
   html += `<div class="row">
@@ -994,9 +1066,30 @@ async function lookupDict(word){
 function lookupTranslation(text){ return cached('t:'+text.trim(), ()=>translate(text)); }
 
 /* ---- APIs (free, no key) ---- */
-// Filling this in raises MyMemory's daily allowance a long way. It is left
-// empty on purpose: the address would be public in this file.
+// A fallback for anyone self-hosting their own copy. On the public site it
+// stays empty -- the address would be visible to everyone -- and each reader
+// sets their own in Settings, which is stored on their device alone.
 const MYMEMORY_EMAIL = '';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function translatorEmail(){
+  const own = (DB.prefs.mmEmail || '').trim();
+  if(own && EMAIL_RE.test(own)) return own;
+  return MYMEMORY_EMAIL;
+}
+
+function saveTranslatorEmail(raw){
+  const value = String(raw || '').trim();
+  const field = document.getElementById('prefEmail');
+  const ok = !value || EMAIL_RE.test(value);
+  field.setAttribute('aria-invalid', ok ? 'false' : 'true');
+  document.getElementById('emailHint').classList.toggle('err', !ok);
+  if(!ok) return;
+  const p = DB.prefs;
+  if(value) p.mmEmail = value; else delete p.mmEmail;
+  DB.prefs = p;
+}
 
 // No third party gets to hold the reader hostage: a request that has not
 // answered by now is abandoned. dictionaryapi.dev has been seen taking 20s to
@@ -1159,7 +1252,8 @@ async function fetchDict(word){
 async function translate(text){
   // MyMemory free translation API (en -> es)
   let url = 'https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair=en|es';
-  if(MYMEMORY_EMAIL) url += '&de='+encodeURIComponent(MYMEMORY_EMAIL);
+  const email = translatorEmail();
+  if(email) url += '&de='+encodeURIComponent(email);
   const r = await apiFetch(url);
   if(!r.ok) throw apiError(r.status === 429 ? 'quota' : 'service', 'El traductor no responde');
   let d;
@@ -1550,6 +1644,7 @@ const ACTIONS = {
   openSearch: ()=>openSearch(),
   openReading: ()=>openReading(),
   pref: el=>setReadingPref(el.dataset.arg),
+  consent: el=>setConsent(el.dataset.arg),
   reviewDirection: ()=>reviewDirection()
 };
 document.addEventListener('click', e=>{

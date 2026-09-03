@@ -78,9 +78,9 @@ Esta app está publicada en **[dibanez.github.io/leerlibros](https://dibanez.git
 | Pronunciación 🔊 | Web Speech API del navegador |
 | Estadísticas de uso | [Google Tag Manager](https://tagmanager.google.com) (`GTM-5ZB7JTBC`), con Google Analytics 4 configurado dentro |
 
-> ⚠️ La traducción gratuita de MyMemory tiene un límite diario generoso pero no infinito. Cuando se agota, la app te lo dice con claridad en vez de fallar en silencio.
+> ⚠️ La traducción gratuita de MyMemory tiene un límite diario generoso pero no infinito. Cuando se agota, la app te lo dice con claridad en vez de fallar en silencio, y te ofrece ampliarlo.
 >
-> Puedes ampliar bastante ese límite rellenando la constante `MYMEMORY_EMAIL` en `index.html` con tu correo. Está vacía a propósito: al ser un repositorio público, esa dirección quedaría a la vista de cualquiera.
+> Para ampliarlo, pon tu correo en **⚙️ Ajustes → Traducción**. MyMemory concede un límite bastante mayor a las consultas identificadas. **Cada persona pone el suyo**: se guarda solo en su dispositivo y no está en el código.
 
 ---
 
@@ -150,6 +150,10 @@ Peticiones externas que sí se hacen:
 
 - Las consultas de **definición y traducción** de las palabras y frases que tocas.
 - **Google Tag Manager** (`GTM-5ZB7JTBC`), que carga Google Analytics 4. Además de las visitas, `analytics.js` mide cómo se usa la app: temas, tamaño de letra, cambios de sección, tiempo de lectura, altas y bajas de libros, y acciones de vocabulario.
+
+  **No se carga hasta que aceptas el aviso de cookies.** Si lo rechazas no se pide nada a Google ni se guarda ninguna cookie suya, y la app funciona igual. Puedes cambiar de opinión en **⚙️ Ajustes → Cookies**.
+
+- Si has puesto tu correo en Ajustes, viaja a **MyMemory** junto a cada traducción, para identificar la consulta y ampliar el límite. No se envía a ningún otro sitio.
 
 ---
 

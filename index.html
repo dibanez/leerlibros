@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; frame-src https://www.googletagmanager.com; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' https://www.googletagmanager.com https://www.google-analytics.com; media-src 'self' https://api.dictionaryapi.dev https://ssl.gstatic.com; connect-src 'self' https://api.dictionaryapi.dev https://en.wiktionary.org https://api.mymemory.translated.net https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; font-src 'self'; manifest-src 'self'; worker-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' https://www.googletagmanager.com https://www.google-analytics.com; media-src 'self' https://api.dictionaryapi.dev https://ssl.gstatic.com; connect-src 'self' https://api.dictionaryapi.dev https://en.wiktionary.org https://api.mymemory.translated.net https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; font-src 'self'; manifest-src 'self'; worker-src 'self'">
 <title>LeerLibros · Lector de inglés con ayuda</title>
 <meta name="description" content="Lee libros en inglés y toca cualquier palabra para ver su pronunciación, traducción al español y definición. Gratis, sin registro y funciona sin conexión.">
 <link rel="canonical" href="https://dibanez.github.io/leerlibros/">
@@ -66,11 +66,6 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body data-theme="light">
-<!-- Google Tag Manager (noscript) -->
-<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5ZB7JTBC"
-height="0" width="0" class="gtm-noscript"></iframe></noscript>
-<!-- End Google Tag Manager -->
-
 <header class="topbar">
   <h1 data-action="goLibrary" role="button" tabindex="0" aria-label="Volver a la biblioteca">📖 Leer<span>Libros</span></h1>
   <div class="grow"></div>
@@ -112,8 +107,11 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
     <div id="libEmpty" class="empty hidden">Tu biblioteca está vacía. Añade un libro para empezar a leer 📚</div>
     <footer class="lib-footer">
       <p>LeerLibros es gratis, sin anuncios y sin cuentas.</p>
-      <a class="btn donate" id="donateBtn" href="https://www.paypal.com/paypalme/dibanez1979"
-         target="_blank" rel="noopener noreferrer">❤️ Donar</a>
+      <div class="footer-actions">
+        <button data-action="openReading">⚙️ Ajustes</button>
+        <a class="btn donate" id="donateBtn" href="https://www.paypal.com/paypalme/dibanez1979"
+           target="_blank" rel="noopener noreferrer">❤️ Donar</a>
+      </div>
     </footer>
   </section>
 
@@ -185,7 +183,9 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
 <!-- Reading settings modal -->
 <div id="readingModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="readingTitle">
   <div class="modal">
-    <h2 id="readingTitle">⚙️ Ajustes de lectura</h2>
+    <h2 id="readingTitle">⚙️ Ajustes</h2>
+
+    <h3 class="sect">Lectura</h3>
 
     <label class="fld" for="prefFont">Tipografía</label>
     <div class="seg wide" id="prefFont" role="group" aria-label="Tipografía">
@@ -206,6 +206,21 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
       <button data-action="pref" data-arg="width:620">Estrecho</button>
       <button data-action="pref" data-arg="width:820">Normal</button>
       <button data-action="pref" data-arg="width:1040">Ancho</button>
+    </div>
+
+    <h3 class="sect">Traducción</h3>
+    <label class="fld" for="prefEmail">Tu correo (opcional)</label>
+    <input id="prefEmail" class="titlein" type="email" inputmode="email" autocomplete="email"
+           placeholder="tu@correo.com" aria-describedby="emailHint">
+    <p class="hint" id="emailHint">MyMemory concede un límite diario de traducción mucho mayor
+      cuando las consultas van identificadas con un correo. Se guarda <b>solo en este dispositivo</b>
+      y únicamente se envía a MyMemory.</p>
+
+    <h3 class="sect">Cookies</h3>
+    <p class="hint" id="consentHint"></p>
+    <div class="seg wide" id="prefConsent" role="group" aria-label="Cookies de análisis">
+      <button data-action="consent" data-arg="denied">Rechazar</button>
+      <button data-action="consent" data-arg="granted">Aceptar</button>
     </div>
 
     <div class="modal-actions">
@@ -249,6 +264,15 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
       <button class="grow" data-action="grade" data-arg="2">😎 Fácil</button>
     </div>
     <div id="revDone" class="empty hidden">¡Repaso terminado! 🎉</div>
+  </div>
+</div>
+
+<div id="cookieBanner" class="cookie-banner hidden" role="region" aria-label="Aviso de cookies">
+  <p>Usamos cookies de <b>Google Analytics</b> para saber cómo se usa la app.
+     No se activan hasta que las aceptes, y sin ellas todo funciona igual.</p>
+  <div class="cookie-actions">
+    <button data-action="consent" data-arg="denied">Rechazar</button>
+    <button class="primary" data-action="consent" data-arg="granted">Aceptar</button>
   </div>
 </div>
 

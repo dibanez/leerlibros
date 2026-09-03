@@ -50,7 +50,8 @@ test.describe('reading settings', () => {
   test('typography, line height and column width are applied and remembered', async ({ page }) => {
     await openApp(page);
     await pasteBook(page, 'Libro', LONG);
-    await page.locator('[data-action="openReading"]').click();
+    // ⚙️ lives both in the reader controls and in the library footer
+    await page.locator('#readerControls [data-action="openReading"]').click();
     await expect(page.locator('#readingModal')).toBeVisible();
 
     await page.locator('[data-arg="font:legible"]').click();

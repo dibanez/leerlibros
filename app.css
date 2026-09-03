@@ -215,3 +215,21 @@
   /* keyboard users get a visible target, mouse users are unaffected */
   #readerText:focus-visible{outline:2px solid var(--accent); outline-offset:6px}
   .w:focus-visible{outline:2px solid var(--accent); border-radius:4px}
+
+  .sect{
+    font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted);
+    margin:22px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--border);
+  }
+  .modal h3.sect:first-of-type{margin-top:6px}
+  .hint{margin:6px 0 12px; font-size:13px; line-height:1.5; color:var(--muted)}
+  .footer-actions{display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center}
+  .cookie-banner{
+    position:fixed; left:12px; right:12px; bottom:12px; z-index:90; max-width:640px;
+    margin:0 auto; background:var(--panel); border:1px solid var(--border);
+    border-radius:14px; box-shadow:var(--shadow); padding:16px 18px;
+    display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+  }
+  .cookie-banner p{margin:0; flex:1; min-width:220px; font-size:13px; line-height:1.5; color:var(--ink)}
+  .cookie-actions{display:flex; gap:8px; margin-left:auto}
+  .hint.err{color:#c0392b}
+  #prefEmail[aria-invalid="true"]{border-color:#c0392b}

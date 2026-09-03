@@ -12,9 +12,13 @@ const PLUS = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.t
  *  - wiktionary:(word) => {en:[...]}|null|'404'|'500'  fallback dictionary reply
  *  - translate: (text) => string|'quota'|'500'     translation API reply
  *  - onRequest: (url) => void                      called for every stubbed API hit
+ *  - consent:   'granted' | 'denied' | null        analytics choice (default granted)
  */
 async function openApp(page, opts = {}) {
   const { dict, translate, wiktionary, onRequest } = opts;
+  // Most tests are about the app, not the banner, so analytics is accepted
+  // unless a test says otherwise.
+  const consent = 'consent' in opts ? opts.consent : 'granted';
 
   // Analytics must never be contacted from a test.
   await page.route('**://www.googletagmanager.com/**', route => route.abort());
@@ -52,12 +56,13 @@ async function openApp(page, opts = {}) {
   });
 
   await page.goto('/index.html');
-  await page.evaluate(async () => {
+  await page.evaluate(async (choice) => {
     localStorage.clear();
+    if (choice) localStorage.setItem('ll_consent', choice);
     for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
     for (const k of await caches.keys()) await caches.delete(k);
     await new Promise(res => { const rq = indexedDB.deleteDatabase('leerlibros'); rq.onsuccess = rq.onerror = rq.onblocked = res; });
-  });
+  }, consent);
   await page.reload();
   await page.waitForFunction(() => typeof booksCache !== 'undefined' && typeof idb !== 'undefined');
 }
