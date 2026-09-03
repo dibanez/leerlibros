@@ -13,17 +13,18 @@ Es una **PWA instalable**: puedes añadirla a la pantalla de inicio de tu móvil
 - **Carga tus libros** de tres formas:
   - ✏️ Pegando texto
   - 📂 Subiendo archivos `.txt`
-  - 📚 Subiendo archivos `.epub` (se extrae el texto automáticamente)
+  - 📚 Subiendo archivos `.epub` (se extrae el texto y los nombres de los capítulos)
 - **Ayuda con palabras** — toca una palabra y obtienes:
   - 🔤 Transcripción fonética + botón 🔊 para escuchar la pronunciación
   - 🇪🇸 Traducción al español
   - 📖 Definiciones y ejemplos en inglés
 - **Ayuda con frases** — selecciona varias palabras y traduce la frase completa.
-- **Vocabulario** — guarda palabras y frases con ⭐; las guardadas quedan subrayadas mientras lees. Repásalas y expórtalas a CSV.
+- **Índice de capítulos** — el desplegable de navegación muestra los títulos reales del libro (leídos del índice del EPUB), no «Sección 7 de 41». Salta a cualquier capítulo de un toque.
+- **Vocabulario con repaso** — guarda palabras y frases con ⭐; las guardadas quedan subrayadas mientras lees. Repásalas con **tarjetas y repetición espaciada** (algoritmo SM-2 simplificado): cada palabra vuelve a aparecer justo antes de que la olvides. El contador junto a ⭐ te dice cuántas tocan hoy. Exportables a CSV.
 - **Comodidad de lectura** — temas claro ☀️ / sepia 📜 / oscuro 🌙, tamaño de texto ajustable y navegación con flechas ← →.
 - **Memoria** — tu biblioteca, tu progreso y tu vocabulario se guardan en el navegador. Recuerda por dónde ibas en cada libro.
 - **Copias de seguridad** — 💾 exporta biblioteca, vocabulario y preferencias a un archivo `.json`, y ♻️ restáuralo en otro dispositivo o después de borrar los datos del navegador. Al restaurar se **añade** a lo que ya tengas, nunca se sobrescribe.
-- **Funciona sin conexión** — la interfaz se cachea mediante un *service worker*. (Las traducciones y definiciones sí necesitan internet.)
+- **Funciona sin conexión** — la interfaz se cachea mediante un *service worker*, y **cada palabra consultada se guarda**: las que ya has mirado se abren al instante y siguen funcionando sin internet. Solo las palabras nuevas necesitan conexión.
 
 ---
 

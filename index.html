@@ -60,7 +60,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     "Traducción y definición de cualquier palabra con un toque",
     "Traducción de frases completas",
     "Lectura de archivos EPUB y TXT",
-    "Vocabulario guardado con exportación a CSV",
+    "Vocabulario con repaso por repetición espaciada y exportación a CSV",
     "Funciona sin conexión e instalable como app"
   ]
 }
@@ -145,6 +145,20 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   .w.saved{border-bottom:2px solid var(--accent)}
   .chapnav{display:flex; align-items:center; gap:12px; justify-content:space-between; margin:22px 4px}
   .chapnav .pageinfo{color:var(--muted); font-size:13px}
+  .chapsel{
+    flex:1; min-width:0; font:inherit; font-size:13px; color:var(--muted); background:var(--panel);
+    border:1px solid var(--border); border-radius:9px; padding:6px 10px; cursor:pointer;
+  }
+  .chapsel:hover{border-color:var(--accent); color:var(--accent)}
+  /* On a phone the picker gets crushed between the two buttons: give it a row. */
+  @media (max-width:560px){
+    .chapnav{flex-wrap:wrap}
+    .chapnav .chapsel{order:-1; flex:1 1 100%}
+  }
+  .badge{
+    display:inline-block; margin-left:6px; min-width:18px; padding:1px 6px; border-radius:9px;
+    background:var(--accent); color:#fff; font-size:11px; font-weight:700; line-height:1.5;
+  }
 
   /* Popup */
   #pop{
@@ -191,6 +205,24 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   .vocab-item .vd{flex:1; font-size:14px; color:var(--ink)}
   .vocab-item .vdel{border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:16px}
   .vocab-item .vdel:hover{color:#c0392b}
+  .vocab-item .vwhen{font-size:11px; color:var(--muted); white-space:nowrap}
+
+  /* Review */
+  .rev-head{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+  .rev-head .pageinfo{margin-left:auto; color:var(--muted); font-size:13px}
+  .rev-card{
+    text-align:center; padding:30px 16px; border:1px solid var(--border); border-radius:14px;
+    background:var(--bg); margin-bottom:14px;
+  }
+  .rev-term{
+    font-family:var(--reader-font); font-size:26px; font-weight:700; color:var(--accent);
+    word-break:break-word; line-height:1.3;
+  }
+  .rev-card .spk{border:none; background:transparent; cursor:pointer; font-size:18px; padding:4px 8px; margin-top:6px}
+  .rev-card .spk:hover{color:var(--accent)}
+  .rev-trans{font-size:18px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border)}
+  .rev-row{display:flex; gap:8px}
+  .rev-row button{white-space:nowrap; font-size:13px; padding:9px 6px}
   textarea{
     width:100%; min-height:200px; font:inherit; padding:12px; border-radius:10px;
     border:1px solid var(--border); background:var(--bg); color:var(--ink); resize:vertical;
@@ -228,7 +260,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <button onclick="setTheme('sepia')" id="th-sepia">📜</button>
     <button onclick="setTheme('dark')" id="th-dark">🌙</button>
   </div>
-  <button onclick="openVocab()">⭐ Vocabulario</button>
+  <button onclick="openVocab()">⭐ Vocabulario<span id="dueBadge" class="badge hidden"></span></button>
   <button id="installBtn" class="primary hidden" onclick="doInstall()">⬇️ Instalar</button>
 </header>
 
@@ -260,13 +292,13 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <h2 id="readerTitle" style="margin:0 0 4px"></h2>
     <div class="chapnav">
       <button onclick="prevChapter()" id="prevBtn">← Anterior</button>
-      <span class="pageinfo" id="pageInfo"></span>
+      <select class="chapsel" id="chapSel" title="Ir a una sección"></select>
       <button onclick="nextChapter()" id="nextBtn">Siguiente →</button>
     </div>
     <div id="readerText" class="reader-text"></div>
     <div class="chapnav">
       <button onclick="prevChapter()">← Anterior</button>
-      <span class="pageinfo" id="pageInfo2"></span>
+      <select class="chapsel" id="chapSel2" title="Ir a una sección"></select>
       <button onclick="nextChapter()">Siguiente →</button>
     </div>
   </section>
@@ -295,13 +327,39 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <div id="vocabModal" class="modal-bg">
   <div class="modal">
     <h2>⭐ Mi vocabulario</h2>
-    <div style="display:flex; gap:8px; margin-bottom:12px">
-      <button class="grow" onclick="exportVocab()">⬇️ Exportar (.csv)</button>
+    <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap">
+      <button class="primary grow" onclick="openReview()">🎯 Repasar<span id="revCount"></span></button>
+      <button onclick="exportVocab()">⬇️ CSV</button>
       <button onclick="clearVocab()">🗑 Vaciar</button>
       <button onclick="closeModal('vocabModal')">Cerrar</button>
     </div>
     <div id="vocabList"></div>
     <div id="vocabEmpty" class="empty hidden">Aún no has guardado palabras. Haz clic en una palabra mientras lees y pulsa “Guardar”.</div>
+  </div>
+</div>
+
+<!-- Review modal -->
+<div id="reviewModal" class="modal-bg">
+  <div class="modal">
+    <div class="rev-head">
+      <h2 style="margin:0">🎯 Repaso</h2>
+      <span class="pageinfo" id="revProgress"></span>
+      <button onclick="closeReview()">Cerrar</button>
+    </div>
+    <div id="revCard" class="rev-card">
+      <div class="rev-term" id="revTerm"></div>
+      <button class="spk" id="revSpk" title="Pronunciar">🔊</button>
+      <div class="rev-trans hidden" id="revTrans"></div>
+    </div>
+    <div id="revShowRow" class="rev-row">
+      <button class="primary grow" onclick="revealCard()">Mostrar traducción</button>
+    </div>
+    <div id="revGradeRow" class="rev-row hidden">
+      <button class="grow" onclick="gradeCard(0)">😕 Otra vez</button>
+      <button class="grow" onclick="gradeCard(1)">🙂 Bien</button>
+      <button class="grow" onclick="gradeCard(2)">😎 Fácil</button>
+    </div>
+    <div id="revDone" class="empty hidden">¡Repaso terminado! 🎉</div>
   </div>
 </div>
 
@@ -346,18 +404,21 @@ let current = null; // current book being read
 // library lives in IndexedDB. It is mirrored in memory to keep the rendering
 // code synchronous; writes go to disk in the background and report failures.
 const IDB_NAME = 'leerlibros';
+const IDB_VERSION = 2;
 const IDB_STORE = 'books';
+const IDB_LOOKUPS = 'lookups';
 let booksCache = [];  // the library as shown, newest first
 let idb = null;       // null when IndexedDB is unusable -> localStorage fallback
 
 function openIDB(){
   return new Promise(resolve=>{
     let req;
-    try{ req = indexedDB.open(IDB_NAME, 1); }
+    try{ req = indexedDB.open(IDB_NAME, IDB_VERSION); }
     catch(err){ console.warn('IndexedDB unavailable', err); return resolve(null); }
     req.onupgradeneeded = ()=>{
       const db = req.result;
       if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath:'id' });
+      if(!db.objectStoreNames.contains(IDB_LOOKUPS)) db.createObjectStore(IDB_LOOKUPS, { keyPath:'key' });
     };
     req.onsuccess = ()=>{
       const db = req.result;
@@ -369,13 +430,13 @@ function openIDB(){
   });
 }
 
-function idbTx(mode, run){
+function idbTx(store, mode, run){
   return new Promise((resolve, reject)=>{
     if(!idb) return reject(new Error('IndexedDB unavailable'));
     let tx, req;
     try{
-      tx = idb.transaction(IDB_STORE, mode);
-      req = run(tx.objectStore(IDB_STORE));
+      tx = idb.transaction(store, mode);
+      req = run(tx.objectStore(store));
     }catch(err){ return reject(err); }
     tx.oncomplete = ()=>resolve(req ? req.result : undefined);
     tx.onerror = ()=>reject(tx.error);
@@ -388,7 +449,7 @@ function sortBooks(){ booksCache.sort((a,b)=>(b.added||0)-(a.added||0)); }
 // Persist one book, or a deletion when removedId is given.
 function persistBook(book, removedId){
   const done = idb
-    ? idbTx('readwrite', s=> removedId ? s.delete(removedId) : s.put(book))
+    ? idbTx(IDB_STORE, 'readwrite', s=> removedId ? s.delete(removedId) : s.put(book))
     : Promise.resolve(writeJSON('ll_books', booksCache));
   return done.catch(err=>{
     console.error('Book save failed', err);
@@ -399,7 +460,7 @@ function persistBook(book, removedId){
 async function initBooks(){
   idb = await openIDB();
   if(idb){
-    try{ booksCache = (await idbTx('readonly', s=>s.getAll())) || []; }
+    try{ booksCache = (await idbTx(IDB_STORE, 'readonly', s=>s.getAll())) || []; }
     catch(err){ console.error('IndexedDB read failed', err); idb = null; }
   }
   const legacy = readJSON('ll_books', []);
@@ -413,12 +474,17 @@ async function initBooks(){
       .filter(b=>b && typeof b === 'object' && !known.has(b.id))
       .map((b,i)=>Object.assign({ added: base-i }, b));
     try{
-      if(incoming.length) await idbTx('readwrite', s=>{ incoming.forEach(b=>s.put(b)); });
+      if(incoming.length) await idbTx(IDB_STORE, 'readwrite', s=>{ incoming.forEach(b=>s.put(b)); });
       booksCache = booksCache.concat(incoming);
       localStorage.removeItem('ll_books');  // dropped only once safely copied
     }catch(err){ console.error('Library migration failed', err); }
   }
-  booksCache.forEach(b=>{ if(!b.added) b.added = 0; });
+  booksCache.forEach(b=>{
+    if(!b.added) b.added = 0;
+    if(!Array.isArray(b.titles) || b.titles.length !== b.chapters.length){
+      b.titles = b.chapters.map(headingOf);
+    }
+  });
   sortBooks();
 }
 
@@ -477,9 +543,10 @@ function deleteBook(id){
   renderLibrary();
 }
 
-function saveBook(title, chapters){
+function saveBook(title, chapters, titles){
   const words = chapters.join(' ').split(/\s+/).filter(Boolean).length;
-  const book = { id:uid(), title:title||'Sin título', chapters, pos:0, words, added:Date.now() };
+  const named = (titles && titles.length === chapters.length) ? titles : chapters.map(headingOf);
+  const book = { id:uid(), title:title||'Sin título', chapters, titles:named, pos:0, words, added:Date.now() };
   booksCache.unshift(book);
   persistBook(book);
   renderLibrary();
@@ -542,9 +609,11 @@ async function loadEpub(file, fallbackTitle){
     opf.querySelectorAll('manifest item').forEach(it=>{
       manifest[it.getAttribute('id')] = it.getAttribute('href');
     });
+    // chapter names, so sections are not just numbers
+    const tocTitles = await readToc(zip, opf, manifest, opfDir);
     // spine order
     const spine = [...opf.querySelectorAll('spine itemref')].map(ir=>ir.getAttribute('idref'));
-    const chapters = [];
+    const chapters = [], titles = [];
     for(const idref of spine){
       let href = manifest[idref];
       if(!href) continue;
@@ -553,15 +622,74 @@ async function loadEpub(file, fallbackTitle){
       if(!fileObj) continue;
       const html = await fileObj.async('string');
       const text = htmlToText(html);
-      if(text.trim().length>40) chapters.push(text);
+      if(text.trim().length>40){
+        chapters.push(text);
+        // the TOC wins; a section missing from it can still name itself
+        titles.push(tocTitles[normHref(href)] || headingOf(text));
+      }
     }
     if(!chapters.length){ toast('No se pudo extraer texto del EPUB'); return; }
-    const b = saveBook(title, chapters);
+    const b = saveBook(title, chapters, titles);
     openBook(b.id);
   }catch(e){
     console.error(e);
     toast('Error leyendo el EPUB: '+e.message);
   }
+}
+
+function normHref(h){ return decodeURIComponent((h||'').split('#')[0].replace(/^\.\//, '')); }
+
+// A chapter with no entry in the table of contents can still take its name
+// from its own first heading.
+function headingOf(text){
+  const first = (text.split('\n')[0]||'').trim();
+  return first.startsWith('## ') ? first.slice(3).trim() : '';
+}
+
+// Chapter titles come from the EPUB 3 nav document or, failing that, from the
+// EPUB 2 NCX. Returns a map of spine href -> title; empty when neither exists.
+async function readToc(zip, opf, manifest, opfDir){
+  const map = {};
+  const readFile = async href=>{
+    const f = zip.file(decodeURIComponent(opfDir + href)) || zip.file(decodeURIComponent(href));
+    return f ? f.async('string') : null;
+  };
+  try{
+    // EPUB 3: the manifest item flagged properties="nav"
+    const navItem = [...opf.querySelectorAll('manifest item')]
+      .find(it=>(it.getAttribute('properties')||'').split(/\s+/).includes('nav'));
+    if(navItem){
+      const xml = await readFile(navItem.getAttribute('href'));
+      if(xml){
+        const doc = new DOMParser().parseFromString(xml, 'text/html');
+        const navs = [...doc.querySelectorAll('nav')];
+        const nav = navs.find(n=>/toc/i.test(n.getAttribute('epub:type')||n.getAttribute('type')||'')) || navs[0];
+        if(nav) nav.querySelectorAll('a[href]').forEach(a=>{
+          const t = a.textContent.replace(/\s+/g,' ').trim();
+          const h = normHref(a.getAttribute('href'));
+          if(t && h && !map[h]) map[h] = t;
+        });
+      }
+    }
+    // EPUB 2: <spine toc="ncx"> points at the NCX through the manifest
+    if(!Object.keys(map).length){
+      const spineEl = opf.querySelector('spine');
+      const ncxHref = spineEl ? manifest[spineEl.getAttribute('toc')] : null;
+      const xml = ncxHref ? await readFile(ncxHref) : null;
+      if(xml){
+        const doc = new DOMParser().parseFromString(xml, 'application/xml');
+        doc.querySelectorAll('navPoint').forEach(np=>{
+          const label = np.querySelector('navLabel text');
+          const content = np.querySelector('content');
+          if(!label || !content) return;
+          const t = label.textContent.replace(/\s+/g,' ').trim();
+          const h = normHref(content.getAttribute('src'));
+          if(t && h && !map[h]) map[h] = t;
+        });
+      }
+    }
+  }catch(err){ console.warn('Table of contents not readable', err); }
+  return map;
 }
 
 function htmlToText(html){
@@ -606,6 +734,7 @@ function openBook(id){
   document.getElementById('reader').style.display='block';
   document.getElementById('readerControls').classList.remove('hidden');
   document.getElementById('readerTitle').textContent = current.title;
+  renderChapterNav();
   renderChapter();
   window.scrollTo(0,0);
 }
@@ -629,12 +758,33 @@ function renderChapter(){
     if(p.startsWith('## ')) return '<h2>'+wrapWords(p.slice(3), savedSet)+'</h2>';
     return '<p>'+wrapWords(p, savedSet)+'</p>';
   }).join('');
-  const info = `Sección ${pos+1} de ${current.chapters.length}`;
-  document.getElementById('pageInfo').textContent = info;
-  document.getElementById('pageInfo2').textContent = info;
+  CHAP_SELECTS.forEach(id=>{ document.getElementById(id).value = String(pos); });
   document.getElementById('prevBtn').disabled = pos===0;
   document.getElementById('nextBtn').disabled = pos===current.chapters.length-1;
 }
+const CHAP_SELECTS = ['chapSel', 'chapSel2'];
+
+function chapterLabel(i){
+  const t = (current.titles||[])[i];
+  return t ? (i+1)+'. '+t : 'Sección '+(i+1)+' de '+current.chapters.length;
+}
+function renderChapterNav(){
+  const opts = current.chapters
+    .map((_,i)=>`<option value="${i}">${esc(chapterLabel(i))}</option>`).join('');
+  CHAP_SELECTS.forEach(id=>{
+    const sel = document.getElementById(id);
+    sel.innerHTML = opts;
+    sel.value = String(current.pos||0);
+  });
+}
+CHAP_SELECTS.forEach(id=>{
+  document.getElementById(id).addEventListener('change', e=>{
+    if(!current) return;
+    current.pos = Number(e.target.value) || 0;
+    persistPos(); renderChapter(); window.scrollTo(0,0);
+  });
+});
+
 // wrap each word-token in a clickable span, keep punctuation
 function wrapWords(str, savedSet){
   return str.replace(/\p{L}+(?:['’-]\p{L}+)*|[^\p{L}]+/gu, tok=>{
@@ -765,7 +915,7 @@ async function lookupWord(word){
   const turn = ++lookupSeq;
   popState = { term: word, trans: '' };
   pop.innerHTML = `<div class="head"><span class="term">${esc(word)}</span></div><div class="loading">Buscando…</div>`;
-  const [dict, tr] = await Promise.allSettled([ fetchDict(word), translate(word) ]);
+  const [dict, tr] = await Promise.allSettled([ lookupDict(word), lookupTranslation(word) ]);
   if(turn !== lookupSeq) return;
   let html = `<div class="head"><span class="term">${esc(word)}</span>`;
   let phon='';
@@ -803,7 +953,7 @@ async function lookupPhrase(phrase){
     <button class="spk" data-act="speak" title="Pronunciar">🔊</button></div>
     <div class="ex">“${esc(phrase)}”</div>`;
   pop.innerHTML = head + `<div class="loading">Traduciendo…</div>`;
-  const tr = await translate(phrase).catch(()=>null);
+  const tr = await lookupTranslation(phrase).catch(()=>null);
   if(turn !== lookupSeq) return;
   popState.trans = tr || '';
   let html = head;
@@ -812,6 +962,30 @@ async function lookupPhrase(phrase){
   html += `<div class="row"><button class="primary" data-act="save">⭐ Guardar</button></div>`;
   pop.innerHTML = html;
 }
+
+/* ---- LOOKUP CACHE ---- */
+// A definition does not change, so a word looked up once is answered from
+// disk: instant, no quota spent, and it keeps working with no connection.
+function cacheGet(key){
+  if(!idb) return Promise.resolve(null);
+  return idbTx(IDB_LOOKUPS, 'readonly', s=>s.get(key)).catch(()=>null);
+}
+function cachePut(key, data){
+  if(!idb) return;
+  idbTx(IDB_LOOKUPS, 'readwrite', s=>s.put({ key, data, ts: Date.now() }))
+    .catch(err=>console.warn('Lookup cache write failed', err));
+}
+// Only real answers are stored. An empty one may just mean an exhausted
+// quota or an outage, and caching that would poison the word for good.
+async function cached(key, fetcher){
+  const hit = await cacheGet(key);
+  if(hit && hit.data) return hit.data;
+  const data = await fetcher();
+  if(data) cachePut(key, data);
+  return data;
+}
+function lookupDict(word){ return cached('d:'+word.toLowerCase().trim(), ()=>fetchDict(word)); }
+function lookupTranslation(text){ return cached('t:'+text.trim(), ()=>translate(text)); }
 
 /* ---- APIs (free, no key) ---- */
 async function fetchDict(word){
@@ -841,29 +1015,55 @@ async function translate(text){
 }
 
 /* ============ VOCAB ============ */
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function addDays(n){
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
+// Anything never reviewed, or scheduled for today or earlier, is due.
+function isDue(v){ return !v.due || v.due <= todayISO(); }
+function dueCount(){ return DB.vocab.filter(isDue).length; }
+function dueLabel(v){
+  if(isDue(v)) return 'hoy';
+  const days = Math.round((new Date(v.due) - new Date(todayISO())) / 86400000);
+  return days === 1 ? 'mañana' : 'en '+days+' d';
+}
+function updateDueBadge(){
+  const n = dueCount();
+  const el = document.getElementById('dueBadge');
+  el.textContent = n;
+  el.classList.toggle('hidden', n === 0);
+}
+
 function saveVocab(term, trans){
   term = term.trim();
   if(!term) return;
   const vocab = DB.vocab;
   if(vocab.some(v=>v.term.toLowerCase()===term.toLowerCase())){ toast('Ya estaba en tu vocabulario'); hidePopup(); return; }
-  vocab.unshift({ term, trans, date: new Date().toISOString().slice(0,10) });
+  vocab.unshift({ term, trans, date: todayISO(), due: todayISO(), interval: 0, ease: 2.5, reps: 0 });
   DB.vocab = vocab;
   toast('⭐ Guardado: '+term);
   hidePopup();
+  updateDueBadge();
   if(current) renderChapter();
 }
 function openVocab(){
   const list = document.getElementById('vocabList');
   const vocab = DB.vocab;
   document.getElementById('vocabEmpty').classList.toggle('hidden', vocab.length>0);
+  const due = dueCount();
+  document.getElementById('revCount').textContent = due ? ' ('+due+')' : '';
   list.innerHTML = vocab.map((v,i)=>`
     <div class="vocab-item">
       <span class="vt">${esc(v.term)}</span>
       <span class="vd">${esc(v.trans||'—')}</span>
+      <span class="vwhen" title="Próximo repaso">${esc(dueLabel(v))}</span>
       <button class="spk" data-act="speak" data-i="${i}" title="Pronunciar" style="border:none;background:none;cursor:pointer">🔊</button>
       <button class="vdel" data-act="del" data-i="${i}" title="Eliminar">✕</button>
     </div>`).join('');
   document.getElementById('vocabModal').style.display='flex';
+  updateDueBadge();
 }
 function delVocab(i){
   const vocab = DB.vocab;
@@ -875,6 +1075,77 @@ function clearVocab(){
   if(!confirm('¿Vaciar todo el vocabulario?')) return;
   DB.vocab = []; openVocab(); if(current) renderChapter();
 }
+
+/* ============ REVIEW (spaced repetition) ============ */
+// Simplified SM-2. Cards are held by reference in revVocab, so grading one
+// and writing the whole array back keeps the schedule in sync.
+let revVocab = null, revQueue = [], revCard = null;
+
+function openReview(){
+  revVocab = DB.vocab;
+  revQueue = revVocab.filter(isDue);
+  if(!revQueue.length){ toast('Nada que repasar hoy 🎉'); return; }
+  for(let i = revQueue.length-1; i > 0; i--){          // shuffle
+    const j = Math.floor(Math.random()*(i+1));
+    [revQueue[i], revQueue[j]] = [revQueue[j], revQueue[i]];
+  }
+  closeModal('vocabModal');
+  document.getElementById('reviewModal').style.display = 'flex';
+  nextCard();
+}
+
+function nextCard(){
+  revCard = revQueue.shift() || null;
+  const done = !revCard;
+  document.getElementById('revDone').classList.toggle('hidden', !done);
+  document.getElementById('revCard').classList.toggle('hidden', done);
+  document.getElementById('revShowRow').classList.toggle('hidden', done);
+  document.getElementById('revGradeRow').classList.add('hidden');
+  document.getElementById('revTrans').classList.add('hidden');
+  document.getElementById('revProgress').textContent = done ? '' : (revQueue.length+1)+' por repasar';
+  if(!done){
+    document.getElementById('revTerm').textContent = revCard.term;
+    document.getElementById('revTrans').textContent = revCard.trans || '—';
+  }
+}
+
+function revealCard(){
+  if(!revCard) return;
+  document.getElementById('revTrans').classList.remove('hidden');
+  document.getElementById('revShowRow').classList.add('hidden');
+  document.getElementById('revGradeRow').classList.remove('hidden');
+}
+
+// grade: 0 again, 1 good, 2 easy
+function gradeCard(grade){
+  if(!revCard) return;
+  const c = revCard;
+  c.ease = Math.max(1.3, Math.min(3, (c.ease || 2.5) + (grade === 0 ? -0.2 : grade === 2 ? 0.15 : 0)));
+  if(grade === 0){
+    c.reps = 0;
+    c.interval = 0;
+  }else{
+    c.reps = (c.reps || 0) + 1;
+    if(c.reps === 1) c.interval = grade === 2 ? 3 : 1;
+    else if(c.reps === 2) c.interval = grade === 2 ? 10 : 6;
+    else c.interval = Math.max(1, Math.round((c.interval || 1) * c.ease * (grade === 2 ? 1.3 : 1)));
+  }
+  c.due = addDays(c.interval);
+  c.reviewed = todayISO();
+  DB.vocab = revVocab;
+  if(grade === 0) revQueue.push(c);   // a failed card comes back this session
+  nextCard();
+  updateDueBadge();
+}
+
+function closeReview(){
+  closeModal('reviewModal');
+  revCard = null; revQueue = [];
+  updateDueBadge();
+  if(current) renderChapter();
+}
+
+document.getElementById('revSpk').addEventListener('click', ()=>{ if(revCard) speak(revCard.term); });
 function exportVocab(){
   const vocab = DB.vocab;
   if(!vocab.length){ toast('No hay nada que exportar'); return; }
@@ -924,10 +1195,15 @@ function cleanBook(b){
 }
 function cleanVocabItem(v){
   if(!v || typeof v !== 'object' || typeof v.term !== 'string' || !v.term.trim()) return null;
+  const day = /^\d{4}-\d{2}-\d{2}$/;
   return {
     term: v.term.trim(),
     trans: typeof v.trans === 'string' ? v.trans : '',
-    date: typeof v.date === 'string' ? v.date : new Date().toISOString().slice(0,10)
+    date: typeof v.date === 'string' ? v.date : todayISO(),
+    due: day.test(v.due) ? v.due : todayISO(),
+    interval: Number.isFinite(v.interval) ? Math.max(0, Math.round(v.interval)) : 0,
+    ease: Number.isFinite(v.ease) ? Math.min(3, Math.max(1.3, v.ease)) : 2.5,
+    reps: Number.isInteger(v.reps) ? Math.max(0, v.reps) : 0
   };
 }
 
@@ -947,7 +1223,7 @@ async function importLibrary(file){
     booksCache = booksCache.concat(newBooks);
     sortBooks();
     try{
-      if(idb) await idbTx('readwrite', s=>{ newBooks.forEach(b=>s.put(b)); });
+      if(idb) await idbTx(IDB_STORE, 'readwrite', s=>{ newBooks.forEach(b=>s.put(b)); });
       else writeJSON('ll_books', booksCache);
     }catch(err){
       console.error('Import failed', err);
@@ -978,6 +1254,7 @@ async function importLibrary(file){
   }
 
   renderLibrary();
+  updateDueBadge();
   if(current) renderChapter();
   if(!newBooks.length && !newWords) toast('Esa copia ya estaba en tu biblioteca');
   else toast('Importado · '+newBooks.length+' libros y '+newWords+' palabras');
@@ -1011,7 +1288,25 @@ window.addEventListener('dragover', e=>e.preventDefault());
 window.addEventListener('drop', e=>e.preventDefault());
 
 /* ============ KEYBOARD ============ */
+function openModals(){
+  return [...document.querySelectorAll('.modal-bg')].filter(m=>m.style.display==='flex');
+}
 document.addEventListener('keydown', e=>{
+  // Reviewing: space reveals, 1/2/3 grade.
+  if(document.getElementById('reviewModal').style.display==='flex'){
+    if(e.key==='Escape') return closeReview();
+    const grading = !document.getElementById('revGradeRow').classList.contains('hidden');
+    if(!grading && (e.key===' ' || e.key==='Enter')){ e.preventDefault(); revealCard(); }
+    else if(grading && ['1','2','3'].includes(e.key)) gradeCard(Number(e.key)-1);
+    return;
+  }
+  const modals = openModals();
+  if(modals.length){
+    if(e.key==='Escape') modals.forEach(m=>{ m.style.display='none'; });
+    return;
+  }
+  // Never steal keys from a field the reader is typing in.
+  if(/^(input|textarea|select)$/i.test(e.target.tagName||'')) return;
   if(document.getElementById('reader').style.display==='block'){
     if(e.key==='ArrowRight') nextChapter();
     if(e.key==='ArrowLeft') prevChapter();
@@ -1052,7 +1347,7 @@ window.addEventListener('appinstalled', ()=>{
 /* ============ INIT ============ */
 initBooks()
   .catch(err=>console.error('Library init failed', err))
-  .then(renderLibrary);
+  .then(()=>{ renderLibrary(); updateDueBadge(); });
 </script>
 </body>
 </html>
