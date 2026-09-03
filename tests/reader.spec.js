@@ -40,10 +40,15 @@ test('the chapter picker jumps, and both pickers stay in sync', async ({ page })
   await expect(page.locator('#nextBtn')).toBeDisabled();
 });
 
-test('pasted text takes its titles from ## headings', async ({ page }) => {
+test('pasted text is cut at its ## headings, just like an EPUB', async ({ page }) => {
   await pasteBook(page, 'Con títulos', '## Chapter One\n\n' + LONG + '\n\n## Chapter Two\n\n' + LONG);
-  const labels = await page.locator('#chapSel option').allTextContents();
-  expect(labels[0]).toBe('1. Chapter One');
+  const titles = await page.evaluate(() => current.titles);
+  expect(titles[0]).toMatch(/^Chapter One/);
+  expect(titles.some(t => /^Chapter Two/.test(t))).toBe(true);
+  // each heading owns its sections in the picker
+  const groups = await page.locator('#chapSel optgroup').evaluateAll(gs => gs.map(g => g.label));
+  expect(groups).toContain('Chapter One');
+  expect(groups).toContain('Chapter Two');
 });
 
 test('the place inside a section is remembered, but a new section starts at the top', async ({ page }) => {

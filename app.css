@@ -35,7 +35,7 @@
   button.primary{background:var(--accent); color:#fff; border-color:var(--accent)}
   button.primary:hover{filter:brightness(1.07); color:#fff}
   .iconbtn{padding:7px 10px; line-height:1}
-  main{max-width:820px; margin:0 auto; padding:24px 18px 120px}
+  main{max-width:var(--measure,820px); margin:0 auto; padding:24px 18px 120px}
 
   /* Library */
   .lib-actions{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:22px}
@@ -65,7 +65,7 @@
   /* Reader */
   #reader{display:none}
   .reader-text{
-    font-family:var(--reader-font); font-size:var(--fs,20px); line-height:1.75;
+    font-family:var(--reader-font); font-size:var(--fs,20px); line-height:var(--lh,1.75);
     background:var(--panel); padding:34px 38px; border-radius:14px; box-shadow:var(--shadow);
     border:1px solid var(--border);
   }
@@ -197,3 +197,21 @@
   .install-steps{margin:0 0 4px; padding-left:22px}
   .install-steps li{margin-bottom:12px; line-height:1.5}
   .install-steps b{color:var(--accent)}
+
+  /* Reader typography, adjustable from the settings panel */
+  .seg.wide{width:100%; margin-bottom:6px}
+  .seg.wide button{flex:1}
+  .searchcount{color:var(--muted); font-size:13px; margin:10px 0 6px; min-height:18px}
+  .searchresults{max-height:46vh; overflow:auto}
+  .searchhit{
+    display:block; width:100%; text-align:left; margin-bottom:8px; padding:10px 12px;
+    border:1px solid var(--border); border-radius:10px; background:var(--bg); cursor:pointer;
+  }
+  .searchhit:hover{border-color:var(--accent)}
+  .searchhit .where{display:block; font-size:12px; color:var(--muted); margin-bottom:4px}
+  .searchhit .snippet{font-family:var(--reader-font); font-size:14px; line-height:1.5}
+  .searchhit mark{background:var(--accent-soft); color:inherit; font-weight:700; border-radius:3px}
+  .w.hit{background:var(--accent); color:#fff}
+  /* keyboard users get a visible target, mouse users are unaffected */
+  #readerText:focus-visible{outline:2px solid var(--accent); outline-offset:6px}
+  .w:focus-visible{outline:2px solid var(--accent); border-radius:4px}

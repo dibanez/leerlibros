@@ -78,6 +78,49 @@ function idbTx(store, mode, run){
 
 function sortBooks(){ booksCache.sort((a,b)=>(b.added||0)-(a.added||0)); }
 
+// Books imported before sections were capped keep chapters of 50 KB, which is
+// dozens of screens with no way back. They are re-cut once, and the reader is
+// left as close as possible to where they had got to.
+function resplitBook(b){
+  const oldPos = Math.min(b.pos || 0, b.chapters.length - 1);
+  const offset = b.chapters.slice(0, oldPos).reduce((n,c)=>n + c.length, 0) +
+                 Math.round((b.scroll || 0) * (b.chapters[oldPos] || '').length);
+
+  const chapters = [], titles = [];
+  b.chapters.forEach((text, i)=>{
+    for(const part of splitIntoSections(text, (b.titles||[])[i] || '')){
+      chapters.push(part.text); titles.push(part.title);
+    }
+  });
+  if(!chapters.length) return false;
+
+  let acc = 0, pos = 0;
+  for(let i = 0; i < chapters.length; i++){
+    pos = i;
+    if(acc + chapters[i].length > offset) break;
+    acc += chapters[i].length;
+  }
+  b.chapters = chapters;
+  b.titles = titles;
+  b.pos = pos;
+  b.scroll = 0;
+  b.resplit = 1;
+  return true;
+}
+
+async function resplitOldBooks(){
+  const stale = booksCache.filter(b=>
+    !b.resplit && b.chapters.some(c=>c.length > SECTION_LIMIT * 2));
+  if(!stale.length) return;
+  const changed = stale.filter(resplitBook);
+  if(!changed.length) return;
+  try{
+    if(idb) await idbTx(IDB_STORE, 'readwrite', s=>{ changed.forEach(b=>s.put(b)); });
+    else writeJSON('ll_books', booksCache);
+    console.info('Re-cut '+changed.length+' book(s) into readable sections');
+  }catch(err){ console.error('Could not store the re-cut books', err); }
+}
+
 // Persist one book, or a deletion when removedId is given.
 function persistBook(book, removedId){
   const done = idb
@@ -117,6 +160,7 @@ async function initBooks(){
       b.titles = b.chapters.map(headingOf);
     }
   });
+  await resplitOldBooks();
   sortBooks();
 }
 
@@ -130,10 +174,52 @@ function changeFont(d){
   const p = DB.prefs; p.fs = Math.min(34, Math.max(14, (p.fs||20)+d*2)); DB.prefs = p;
   document.documentElement.style.setProperty('--fs', p.fs+'px');
 }
+
+// Long reading sessions live or die on these three.
+const READER_FONTS = {
+  serif:   "'Georgia', 'Times New Roman', serif",
+  sans:    "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+  legible: "Verdana, Tahoma, 'DejaVu Sans', sans-serif"
+};
+function applyReading(p){
+  const root = document.documentElement.style;
+  root.setProperty('--fs', (p.fs || 20)+'px');
+  root.setProperty('--lh', String(p.lh || 1.75));
+  root.setProperty('--measure', (p.width || 820)+'px');
+  root.setProperty('--reader-font', READER_FONTS[p.font] || READER_FONTS.serif);
+  markReadingChoices(p);
+}
+function markReadingChoices(p){
+  const on = (groupId, value)=>{
+    const group = document.getElementById(groupId);
+    if(!group) return;
+    [...group.querySelectorAll('button')].forEach(b=>{
+      const active = b.dataset.arg.split(':')[1] === String(value);
+      b.classList.toggle('on', active);
+      b.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  };
+  on('prefFont', p.font || 'serif');
+  on('prefLh', p.lh || 1.75);
+  on('prefWidth', p.width || 820);
+}
+// data-arg is "key:value"
+function setReadingPref(arg){
+  const [key, raw] = String(arg).split(':');
+  const p = DB.prefs;
+  p[key] = key === 'font' ? raw : Number(raw);
+  DB.prefs = p;
+  applyReading(p);
+}
+function openReading(){
+  markReadingChoices(DB.prefs);
+  openModal('readingModal');
+}
+
 (function initPrefs(){
   const p = DB.prefs;
   setTheme(p.theme||'light');
-  document.documentElement.style.setProperty('--fs', (p.fs||20)+'px');
+  applyReading(p);
 })();
 
 /* ============ TOAST ============ */
@@ -176,6 +262,13 @@ function deleteBook(id){
   renderLibrary();
 }
 
+// Pasted text and .txt files go through the same cutting as an EPUB, so a
+// "## Heading" names its section there too instead of landing mid-section.
+function saveBookFromText(title, text){
+  const parts = splitIntoSections(text, '');
+  return saveBook(title, parts.map(p=>p.text), parts.map(p=>p.title));
+}
+
 function saveBook(title, chapters, titles){
   const words = chapters.join(' ').split(/\s+/).filter(Boolean).length;
   const named = (titles && titles.length === chapters.length) ? titles : chapters.map(headingOf);
@@ -193,7 +286,7 @@ function handleFiles(files){
     if(/\.epub$/i.test(f.name)) loadEpub(f, name);
     else if(/\.txt$/i.test(f.name)){
       const r = new FileReader();
-      r.onload = ()=>{ const b=saveBook(name, splitChapters(r.result)); openBook(b.id); };
+      r.onload = ()=>{ const b=saveBookFromText(name, r.result); openBook(b.id); };
       r.readAsText(f);
     } else toast('Formato no soportado: '+f.name);
   });
@@ -275,7 +368,7 @@ async function loadEpub(file, fallbackTitle){
 // points at by fragment -- and whatever is still too long is capped.
 function splitIntoSections(text, fallbackTitle){
   const out = [];
-  const blocks = text.split(/\n\n(?=## )/);
+  const blocks = String(text).replace(/\r\n/g, '\n').split(/\n\n(?=## )/);
   for(const block of blocks){
     const heading = headingOf(block);
     const title = heading || (out.length ? '' : (fallbackTitle || ''));
@@ -544,7 +637,9 @@ CHAP_SELECTS.forEach(id=>{
 function wrapWords(str, savedSet){
   return str.replace(/\p{L}+(?:['’-]\p{L}+)*|[^\p{L}]+/gu, tok=>{
     if(/^\p{L}/u.test(tok)){
-      const cls = savedSet.has(tok.toLowerCase()) ? 'w saved' : 'w';
+      const low = tok.toLowerCase();
+      let cls = savedSet.has(low) ? 'w saved' : 'w';
+      if(searchTerm && low.includes(searchTerm)) cls += ' hit';
       return `<span class="${cls}">${esc(tok)}</span>`;
     }
     return esc(tok);
@@ -562,6 +657,71 @@ function persistPos(){
   const b = booksCache.find(x=>x.id===current.id);
   if(b){ b.pos = current.pos; persistBook(b); }
 }
+
+/* ============ SEARCH INSIDE A BOOK ============ */
+let searchTerm = '';          // highlighted in the text while it is set
+
+function openSearch(){
+  openModal('searchModal');
+  const input = document.getElementById('searchInput');
+  input.value = searchTerm;
+  runSearch();
+}
+
+function snippetAround(text, at, term){
+  const from = Math.max(0, at - 60);
+  const before = (from ? '…' : '') + text.slice(from, at);
+  const after = text.slice(at + term.length, at + term.length + 60) +
+                (at + term.length + 60 < text.length ? '…' : '');
+  return esc(before) + '<mark>' + esc(text.slice(at, at + term.length)) + '</mark>' + esc(after);
+}
+
+function runSearch(){
+  const term = document.getElementById('searchInput').value.trim();
+  const list = document.getElementById('searchResults');
+  const count = document.getElementById('searchCount');
+  searchTerm = term.toLowerCase();
+  if(!current || term.length < 2){
+    list.innerHTML = '';
+    count.textContent = term ? 'Escribe al menos dos letras.' : '';
+    return;
+  }
+  const needle = term.toLowerCase();
+  const hits = [];
+  for(let i = 0; i < current.chapters.length && hits.length < 60; i++){
+    const text = current.chapters[i];
+    const hay = text.toLowerCase();
+    let at = hay.indexOf(needle);
+    while(at !== -1 && hits.length < 60){
+      hits.push({ i, html: snippetAround(text, at, term) });
+      at = hay.indexOf(needle, at + needle.length);
+    }
+  }
+  count.textContent = hits.length
+    ? hits.length + (hits.length === 1 ? ' resultado' : ' resultados') + (hits.length === 60 ? ' (se muestran los primeros)' : '')
+    : 'Sin resultados.';
+  list.innerHTML = hits.map(h=>
+    `<button class="searchhit" data-go="${h.i}">
+       <span class="where">${esc(chapterLabel(h.i))}</span>
+       <span class="snippet">${h.html}</span>
+     </button>`).join('');
+}
+
+document.getElementById('searchResults').addEventListener('click', e=>{
+  const hit = e.target.closest('[data-go]');
+  if(!hit) return;
+  closeModal('searchModal');
+  goToChapter(Number(hit.dataset.go));
+  requestAnimationFrame(()=>{
+    const first = document.querySelector('#readerText .w.hit');
+    if(first) first.scrollIntoView({ block:'center' });
+  });
+});
+let searchT;
+document.getElementById('searchInput').addEventListener('input', ()=>{
+  clearTimeout(searchT);
+  searchT = setTimeout(runSearch, 180);
+});
 
 /* ============ LOOKUP (word & phrase) ============ */
 const pop = document.getElementById('pop');
@@ -1061,7 +1221,7 @@ function openVocab(){
       <button class="spk" data-act="speak" data-i="${i}" title="Pronunciar">🔊</button>
       <button class="vdel" data-act="del" data-i="${i}" title="Eliminar">✕</button>
     </div>`).join('');
-  document.getElementById('vocabModal').style.display='flex';
+  openModal('vocabModal');
   updateDueBadge();
 }
 function delVocab(i){
@@ -1089,9 +1249,26 @@ function openReview(){
     [revQueue[i], revQueue[j]] = [revQueue[j], revQueue[i]];
   }
   closeModal('vocabModal');
-  document.getElementById('reviewModal').style.display = 'flex';
+  paintReviewDirection();
+  openModal('reviewModal');
   report('review_open');
   nextCard();
+}
+
+function reviewDirection(){
+  const p = DB.prefs;
+  p.revReverse = !p.revReverse;
+  DB.prefs = p;
+  paintReviewDirection();
+  if(revCard) nextCard.show(revCard);
+}
+function paintReviewDirection(){
+  const btn = document.getElementById('revDirBtn');
+  const reverse = !!DB.prefs.revReverse;
+  btn.textContent = reverse ? '🇪🇸→🇬🇧' : '🇬🇧→🇪🇸';
+  btn.setAttribute('aria-label', reverse
+    ? 'Repaso de español a inglés. Pulsa para cambiar.'
+    : 'Repaso de inglés a español. Pulsa para cambiar.');
 }
 
 function nextCard(){
@@ -1103,11 +1280,20 @@ function nextCard(){
   document.getElementById('revGradeRow').classList.add('hidden');
   document.getElementById('revTrans').classList.add('hidden');
   document.getElementById('revProgress').textContent = done ? '' : (revQueue.length+1)+' por repasar';
-  if(!done){
-    document.getElementById('revTerm').textContent = revCard.term;
-    document.getElementById('revTrans').textContent = revCard.trans || '—';
-  }
+  if(!done) nextCard.show(revCard);
 }
+
+// Which side of the card faces up. Recognising a word is much easier than
+// producing it, so the reverse direction is where the learning happens.
+nextCard.show = function(card){
+  const reverse = !!DB.prefs.revReverse;
+  const front = document.getElementById('revTerm');
+  const back = document.getElementById('revTrans');
+  front.textContent = reverse ? (card.trans || '—') : card.term;
+  front.lang = reverse ? 'es' : 'en';
+  back.textContent = reverse ? card.term : (card.trans || '—');
+  back.lang = reverse ? 'en' : 'es';
+};
 
 function revealCard(){
   if(!revCard) return;
@@ -1149,6 +1335,7 @@ function closeReview(){
   if(current) renderChapter();
 }
 
+// always the English side, whichever way round the card is shown
 document.getElementById('revSpk').addEventListener('click', ()=>{
   if(!revCard) return;
   report('speak', { word: reportContent(revCard.term) });
@@ -1278,17 +1465,45 @@ async function importLibrary(file){
 function openPaste(){
   document.getElementById('pasteTitle').value='';
   document.getElementById('pasteText').value='';
-  document.getElementById('pasteModal').style.display='flex';
+  openModal('pasteModal');
 }
 function savePaste(){
   const title = document.getElementById('pasteTitle').value.trim() || 'Texto pegado';
   const text = document.getElementById('pasteText').value;
   if(!text.trim()){ toast('Pega algún texto primero'); return; }
   closeModal('pasteModal');
-  const b = saveBook(title, splitChapters(text));
+  const b = saveBookFromText(title, text);
   openBook(b.id);
 }
-function closeModal(id){ document.getElementById(id).style.display='none'; }
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+let focusBeforeModal = null;
+
+// A modal that does not take the focus is invisible to a keyboard or a screen
+// reader, and one that does not hold it lets you tab out into the page behind.
+function openModal(id){
+  const modal = document.getElementById(id);
+  focusBeforeModal = document.activeElement;
+  modal.style.display = 'flex';
+  const first = modal.querySelector(FOCUSABLE);
+  if(first) first.focus();
+}
+function closeModal(id){
+  const modal = document.getElementById(id);
+  if(!modal || modal.style.display === 'none') return;
+  modal.style.display = 'none';
+  if(focusBeforeModal && document.contains(focusBeforeModal)) focusBeforeModal.focus();
+  focusBeforeModal = null;
+}
+document.addEventListener('keydown', e=>{
+  if(e.key !== 'Tab') return;
+  const modal = openModals()[0];
+  if(!modal) return;
+  const items = [...modal.querySelectorAll(FOCUSABLE)].filter(el=>el.offsetParent !== null);
+  if(!items.length) return;
+  const first = items[0], last = items[items.length-1];
+  if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+});
 [...document.querySelectorAll('.modal-bg')].forEach(m=>{
   m.addEventListener('click', e=>{ if(e.target===m) m.style.display='none'; });
 });
@@ -1331,7 +1546,11 @@ const ACTIONS = {
   closeReview: ()=>closeReview(),
   closeModal: el=>closeModal(el.dataset.arg),
   prevChapter: ()=>prevChapter(),
-  nextChapter: ()=>nextChapter()
+  nextChapter: ()=>nextChapter(),
+  openSearch: ()=>openSearch(),
+  openReading: ()=>openReading(),
+  pref: el=>setReadingPref(el.dataset.arg),
+  reviewDirection: ()=>reviewDirection()
 };
 document.addEventListener('click', e=>{
   const el = e.target.closest('[data-action]');
@@ -1363,11 +1582,25 @@ document.addEventListener('keydown', e=>{
   }
   const modals = openModals();
   if(modals.length){
-    if(e.key==='Escape') modals.forEach(m=>{ m.style.display='none'; });
+    if(e.key==='Escape') modals.forEach(m=>closeModal(m.id));
     return;
   }
   // Never steal keys from a field the reader is typing in.
   if(/^(input|textarea|select)$/i.test(e.target.tagName||'')) return;
+
+  // Keyboard path into the lookup: select a word or phrase with the keyboard
+  // and press Enter. Making all 5.000 words tab stops would be far worse.
+  if(e.key === 'Enter' && document.getElementById('readerText').contains(e.target)){
+    const sel = String(window.getSelection() || '').trim();
+    if(sel){
+      e.preventDefault();
+      const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
+      showPopupAt(rect.left + window.scrollX, rect.bottom + window.scrollY + 6);
+      if(sel.split(/\s+/).length > 1) lookupPhrase(sel);
+      else lookupWord(sel.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, ''));
+      return;
+    }
+  }
   if(document.getElementById('reader').style.display==='block'){
     if(e.key==='ArrowRight') nextChapter();
     if(e.key==='ArrowLeft') prevChapter();
@@ -1413,7 +1646,7 @@ const INSTALL_STEPS = {
 function showInstallHelp(){
   const steps = INSTALL_STEPS[isIOS() ? 'ios' : 'other'];
   document.getElementById('installSteps').innerHTML = steps.map(s=>`<li>${s}</li>`).join('');
-  document.getElementById('installModal').style.display = 'flex';
+  openModal('installModal');
 }
 
 window.addEventListener('beforeinstallprompt', e=>{

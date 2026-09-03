@@ -1,5 +1,5 @@
 /* LeerLibros service worker — app-shell offline cache */
-const CACHE = 'leerlibros-v17';
+const CACHE = 'leerlibros-v18';
 const HTML_TIMEOUT = 3000; // on lie-fi, fall back to cache instead of hanging
 const ASSETS = [
   './',
@@ -46,12 +46,14 @@ function offlineResponse() {
 // version only showed up on the second load. Navigations now go to the
 // network first and fall back to the cache when it is slow or unreachable.
 // A late reply still refreshes the cache, so nothing is wasted.
-function networkFirst(req) {
+function networkFirst(req, isPage) {
   return new Promise(resolve => {
     let settled = false;
     const done = res => { if (!settled) { settled = true; resolve(res); } };
+    // only a navigation may fall back to the shell; answering a script request
+    // with index.html would be worse than failing
     const fromCache = () => caches.match(req)
-      .then(hit => hit || caches.match('./index.html'))
+      .then(hit => hit || (isPage ? caches.match('./index.html') : null))
       .then(hit => done(hit || offlineResponse()));
 
     const timer = setTimeout(fromCache, HTML_TIMEOUT);
@@ -76,14 +78,22 @@ self.addEventListener('fetch', e => {
     return; // let the browser handle it normally
   }
 
-  // The page itself: always try for a fresh copy.
-  if (req.mode === 'navigate' || (url.origin === location.origin && url.pathname.endsWith('.html'))) {
-    e.respondWith(networkFirst(req));
+  const isPage = req.mode === 'navigate' ||
+                 (url.origin === location.origin && url.pathname.endsWith('.html'));
+  // The app's own code travels with the page. Serving it cache-first meant a
+  // deploy could hand out new markup with old logic whenever the CACHE version
+  // was not bumped by hand; going to the network keeps the two in step.
+  const isOwnCode = url.origin === location.origin &&
+                    /\.(js|css)$/.test(url.pathname) &&
+                    !url.pathname.includes('/vendor/');
+
+  if (isPage || isOwnCode) {
+    e.respondWith(networkFirst(req, isPage));
     return;
   }
 
-  // Styles, scripts, icons, manifest: cache-first, fall back to network and
-  // store. These only change with a new CACHE version, which wipes the old one.
+  // Icons, manifest and the pinned JSZip never change without a new name, so
+  // they are served from the cache and only fetched when missing.
   e.respondWith(
     caches.match(req).then(cached => {
       if (cached) return cached;

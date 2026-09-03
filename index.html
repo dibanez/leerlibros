@@ -72,16 +72,18 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
 <!-- End Google Tag Manager -->
 
 <header class="topbar">
-  <h1 data-action="goLibrary">📖 Leer<span>Libros</span></h1>
+  <h1 data-action="goLibrary" role="button" tabindex="0" aria-label="Volver a la biblioteca">📖 Leer<span>Libros</span></h1>
   <div class="grow"></div>
   <div id="readerControls" class="readerctl hidden">
-    <button class="iconbtn" title="Reducir texto" data-action="font" data-arg="-1">A−</button>
-    <button class="iconbtn" title="Aumentar texto" data-action="font" data-arg="1">A+</button>
+    <button class="iconbtn" title="Buscar en el libro" aria-label="Buscar en el libro" data-action="openSearch">🔎</button>
+    <button class="iconbtn" title="Reducir texto" aria-label="Reducir el texto" data-action="font" data-arg="-1">A−</button>
+    <button class="iconbtn" title="Aumentar texto" aria-label="Aumentar el texto" data-action="font" data-arg="1">A+</button>
+    <button class="iconbtn" title="Ajustes de lectura" aria-label="Ajustes de lectura" data-action="openReading">⚙️</button>
   </div>
-  <div class="seg" title="Tema">
-    <button data-action="theme" data-arg="light" id="th-light" title="Claro">☀️</button>
-    <button data-action="theme" data-arg="sepia" id="th-sepia" title="Sepia">📜</button>
-    <button data-action="theme" data-arg="dark" id="th-dark" title="Oscuro">🌙</button>
+  <div class="seg" role="group" aria-label="Tema de lectura">
+    <button data-action="theme" data-arg="light" id="th-light" title="Claro" aria-label="Tema claro">☀️</button>
+    <button data-action="theme" data-arg="sepia" id="th-sepia" title="Sepia" aria-label="Tema sepia">📜</button>
+    <button data-action="theme" data-arg="dark" id="th-dark" title="Oscuro" aria-label="Tema oscuro">🌙</button>
   </div>
   <button data-action="openVocab">⭐ Vocabulario<span id="dueBadge" class="badge hidden"></span></button>
   <button id="installBtn" class="primary hidden" data-action="doInstall">⬇️ Instalar</button>
@@ -123,7 +125,8 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
       <select class="chapsel" id="chapSel" title="Ir a una sección"></select>
       <button data-action="nextChapter" id="nextBtn">Siguiente →</button>
     </div>
-    <div id="readerText" class="reader-text" lang="en"></div>
+    <div id="readerText" class="reader-text" lang="en" tabindex="0"
+         aria-label="Texto del libro. Selecciona una palabra o frase y pulsa Intro para consultarla."></div>
     <div class="chapnav">
       <button data-action="prevChapter">← Anterior</button>
       <select class="chapsel" id="chapSel2" title="Ir a una sección"></select>
@@ -133,13 +136,13 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
 </main>
 
 <!-- Word/phrase popup -->
-<div id="pop"></div>
+<div id="pop" role="dialog" aria-live="polite" aria-label="Significado de la palabra"></div>
 
 <!-- Floating "translate phrase" button (shown on multi-word selection) -->
 <button id="selBtn">🔍 Traducir frase</button>
 
 <!-- Paste modal -->
-<div id="pasteModal" class="modal-bg">
+<div id="pasteModal" class="modal-bg" role="dialog" aria-modal="true">
   <div class="modal">
     <h2>Pegar texto de un libro</h2>
     <input id="pasteTitle" class="titlein" placeholder="Título del libro">
@@ -152,7 +155,7 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
 </div>
 
 <!-- Vocab modal -->
-<div id="vocabModal" class="modal-bg">
+<div id="vocabModal" class="modal-bg" role="dialog" aria-modal="true">
   <div class="modal">
     <h2>⭐ Mi vocabulario</h2>
     <div class="vocab-actions">
@@ -166,8 +169,53 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
   </div>
 </div>
 
+<!-- Search modal -->
+<div id="searchModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
+  <div class="modal">
+    <h2 id="searchTitle">🔎 Buscar en el libro</h2>
+    <input id="searchInput" class="titlein" type="search" placeholder="Palabra o frase…" aria-label="Texto a buscar">
+    <div id="searchCount" class="searchcount"></div>
+    <div id="searchResults" class="searchresults"></div>
+    <div class="modal-actions">
+      <button data-action="closeModal" data-arg="searchModal">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reading settings modal -->
+<div id="readingModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="readingTitle">
+  <div class="modal">
+    <h2 id="readingTitle">⚙️ Ajustes de lectura</h2>
+
+    <label class="fld" for="prefFont">Tipografía</label>
+    <div class="seg wide" id="prefFont" role="group" aria-label="Tipografía">
+      <button data-action="pref" data-arg="font:serif">Serif</button>
+      <button data-action="pref" data-arg="font:sans">Sans</button>
+      <button data-action="pref" data-arg="font:legible">Legible</button>
+    </div>
+
+    <label class="fld">Interlineado</label>
+    <div class="seg wide" id="prefLh" role="group" aria-label="Interlineado">
+      <button data-action="pref" data-arg="lh:1.45">Compacto</button>
+      <button data-action="pref" data-arg="lh:1.75">Normal</button>
+      <button data-action="pref" data-arg="lh:2.1">Amplio</button>
+    </div>
+
+    <label class="fld">Ancho de columna</label>
+    <div class="seg wide" id="prefWidth" role="group" aria-label="Ancho de columna">
+      <button data-action="pref" data-arg="width:620">Estrecho</button>
+      <button data-action="pref" data-arg="width:820">Normal</button>
+      <button data-action="pref" data-arg="width:1040">Ancho</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="primary" data-action="closeModal" data-arg="readingModal">Listo</button>
+    </div>
+  </div>
+</div>
+
 <!-- Install help modal -->
-<div id="installModal" class="modal-bg">
+<div id="installModal" class="modal-bg" role="dialog" aria-modal="true">
   <div class="modal">
     <h2>📲 Instalar LeerLibros</h2>
     <p class="install-intro">Se añade a tu pantalla de inicio y se abre como una app: a pantalla completa, sin barra del navegador y funcionando sin conexión.</p>
@@ -179,11 +227,12 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
 </div>
 
 <!-- Review modal -->
-<div id="reviewModal" class="modal-bg">
+<div id="reviewModal" class="modal-bg" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="rev-head">
       <h2>🎯 Repaso</h2>
       <span class="pageinfo" id="revProgress"></span>
+      <button id="revDirBtn" data-action="reviewDirection" title="Cambiar el sentido del repaso">🇬🇧→🇪🇸</button>
       <button data-action="closeReview">Cerrar</button>
     </div>
     <div id="revCard" class="rev-card">
@@ -203,7 +252,7 @@ height="0" width="0" class="gtm-noscript"></iframe></noscript>
   </div>
 </div>
 
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="app.js"></script>
 <script src="analytics.js"></script>

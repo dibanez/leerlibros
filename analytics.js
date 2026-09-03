@@ -140,21 +140,36 @@
       const now = vis(reader);
       if (now && !wasOpen) {
         secs = 0; hits = {};
+        startClock();
         track('reader_open', { book_title: content(cut(tx($('readerTitle')))) });
       }
       // to one decimal: whole minutes reported every session under 30s as 0,
       // and made 40s and 80s indistinguishable
-      if (!now && wasOpen) track('reader_close', { minutes: Math.round(secs / 6) / 10 });
+      if (!now && wasOpen) {
+        stopClock();
+        track('reader_close', { minutes: Math.round(secs / 6) / 10 });
+      }
       wasOpen = now;
     }).observe(reader, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
   }
-  setInterval(function () {
-    if (!vis(reader) || document.hidden) return;
-    secs += 15;
-    [1, 5, 10, 20, 30].forEach(function (m) {
-      if (secs >= m * 60 && !hits[m]) { hits[m] = 1; track('reading_time', { minutes: m }); }
-    });
-  }, 15000);
+
+  // The clock only runs while a book is open: no point waking the phone every
+  // 15 seconds to watch a library nobody is reading.
+  let ticker = null;
+  function startClock() {
+    if (ticker) return;
+    ticker = setInterval(function () {
+      if (!vis(reader) || document.hidden) return;
+      secs += 15;
+      [1, 5, 10, 20, 30].forEach(function (m) {
+        if (secs >= m * 60 && !hits[m]) { hits[m] = 1; track('reading_time', { minutes: m }); }
+      });
+    }, 15000);
+  }
+  function stopClock() {
+    if (ticker) { clearInterval(ticker); ticker = null; }
+  }
+  if (wasOpen) startClock();
 
   /* ---------- PWA ---------- */
   window.addEventListener('beforeinstallprompt', () => track('pwa_install_available'));
