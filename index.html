@@ -57,7 +57,9 @@
     "Traducción y definición de cualquier palabra con un toque",
     "Traducción de frases completas",
     "Lectura de archivos EPUB y TXT",
-    "Vocabulario con repaso por repetición espaciada y exportación a CSV",
+    "Vocabulario que guarda la frase del libro donde encontraste cada palabra",
+    "Práctica activa: test, escribir la palabra, completar la frase y dictado",
+    "Repetición espaciada con límite diario de palabras nuevas y racha de días",
     "Funciona sin conexión e instalable como app"
   ]
 }
@@ -162,7 +164,28 @@
       <button data-action="clearVocab">🗑 Vaciar</button>
       <button data-action="closeModal" data-arg="vocabModal">Cerrar</button>
     </div>
+    <div id="vocabStats" class="vocab-stats"></div>
+    <div class="vocab-tools">
+      <input id="vocabSearch" type="search" class="vocab-search" placeholder="Buscar palabra…"
+             aria-label="Buscar en el vocabulario">
+      <select id="vocabFilter" class="prefsel" aria-label="Filtrar el vocabulario">
+        <option value="all">Todas</option>
+        <option value="due">Para hoy</option>
+        <option value="new">Sin repasar</option>
+        <option value="learning">Aprendiendo</option>
+        <option value="known">Aprendidas</option>
+        <option value="hard">Se me resisten</option>
+        <option value="phrase">Frases</option>
+      </select>
+      <select id="vocabSort" class="prefsel" aria-label="Ordenar el vocabulario">
+        <option value="added">Más recientes</option>
+        <option value="alpha">A → Z</option>
+        <option value="due">Próximo repaso</option>
+        <option value="hard">Más falladas</option>
+      </select>
+    </div>
     <div id="vocabList"></div>
+    <div id="vocabNone" class="empty hidden">Ninguna palabra coincide con este filtro.</div>
     <div id="vocabEmpty" class="empty hidden">Aún no has guardado palabras. Haz clic en una palabra mientras lees y pulsa “Guardar”.</div>
   </div>
 </div>
@@ -208,6 +231,39 @@
       <button data-action="pref" data-arg="width:1040">Ancho</button>
     </div>
 
+    <h3 class="sect">Repaso</h3>
+
+    <label class="fld" for="prefExercise">Tipo de ejercicio</label>
+    <select id="prefExercise" class="prefsel wide">
+      <option value="mixed">🎲 Mixto</option>
+      <option value="choice">🔢 Test</option>
+      <option value="flip">🔁 Tarjeta</option>
+      <option value="type">⌨️ Escribir</option>
+      <option value="cloze">␣ Hueco</option>
+      <option value="listen">👂 Dictado</option>
+    </select>
+    <p class="hint">Con <b>Mixto</b> el ejercicio se endurece a medida que la palabra se te afianza:
+      primero la reconoces, luego la escribes, y al final la completas en la frase del libro
+      donde la encontraste.</p>
+
+    <label class="fld">Palabras nuevas al día</label>
+    <div class="seg wide" id="prefNew" role="group" aria-label="Palabras nuevas al día">
+      <button data-action="pref" data-arg="newPerDay:5">5</button>
+      <button data-action="pref" data-arg="newPerDay:10">10</button>
+      <button data-action="pref" data-arg="newPerDay:20">20</button>
+      <button data-action="pref" data-arg="newPerDay:0">Todas</button>
+    </div>
+
+    <label class="fld">Máximo por sesión</label>
+    <div class="seg wide" id="prefSession" role="group" aria-label="Máximo de tarjetas por sesión">
+      <button data-action="pref" data-arg="sessionCap:20">20</button>
+      <button data-action="pref" data-arg="sessionCap:40">40</button>
+      <button data-action="pref" data-arg="sessionCap:80">80</button>
+      <button data-action="pref" data-arg="sessionCap:0">Sin tope</button>
+    </div>
+    <p class="hint">Guardar cincuenta palabras leyendo un capítulo y encontrarte cincuenta tarjetas
+      a la mañana siguiente es la forma más rápida de dejarlo. Estos dos límites lo evitan.</p>
+
     <h3 class="sect">Traducción</h3>
     <label class="fld" for="prefEmail">Tu correo (opcional)</label>
     <input id="prefEmail" class="titlein" type="email" inputmode="email" autocomplete="email"
@@ -246,15 +302,35 @@
   <div class="modal">
     <div class="rev-head">
       <h2>🎯 Repaso</h2>
-      <span class="pageinfo" id="revProgress"></span>
+      <select id="revModeSel" class="prefsel" title="Tipo de ejercicio" aria-label="Tipo de ejercicio">
+        <option value="mixed">🎲 Mixto</option>
+        <option value="choice">🔢 Test</option>
+        <option value="flip">🔁 Tarjeta</option>
+        <option value="type">⌨️ Escribir</option>
+        <option value="cloze">␣ Hueco</option>
+        <option value="listen">👂 Dictado</option>
+      </select>
       <button id="revDirBtn" data-action="reviewDirection" title="Cambiar el sentido del repaso">🇬🇧→🇪🇸</button>
       <button data-action="closeReview">Cerrar</button>
     </div>
+    <div class="rev-sub"><span class="pageinfo" id="revProgress"></span></div>
     <div id="revCard" class="rev-card">
+      <div class="rev-kind" id="revKind"></div>
       <div class="rev-term" id="revTerm" lang="en"></div>
-      <button class="spk" id="revSpk" title="Pronunciar">🔊</button>
+      <div class="rev-ctx hidden" id="revCtx" lang="en"></div>
+      <button class="spk" id="revSpk" title="Escuchar">🔊</button>
       <div class="rev-trans hidden" id="revTrans"></div>
+      <div class="rev-extra hidden" id="revExtra"></div>
+      <button class="rev-src hidden" id="revSrc" data-action="goToSource">📖 Ver en el libro</button>
     </div>
+    <div id="revVerdict" class="rev-verdict hidden" role="status" aria-live="polite"></div>
+    <div id="revTypeRow" class="rev-row hidden">
+      <input id="revInput" class="revin" type="text" lang="en" autocomplete="off"
+             autocapitalize="off" autocorrect="off" spellcheck="false"
+             aria-label="Escribe la palabra en inglés">
+      <button class="primary" data-action="checkTyped">Comprobar</button>
+    </div>
+    <div id="revChoiceRow" class="rev-choices hidden"></div>
     <div id="revShowRow" class="rev-row">
       <button class="primary grow" data-action="revealCard">Mostrar traducción</button>
     </div>

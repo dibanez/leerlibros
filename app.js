@@ -28,6 +28,8 @@ const DB = {
   set vocab(v){ writeJSON('ll_vocab', v); },
   get prefs(){ return readJSON('ll_prefs', {}); },
   set prefs(v){ writeJSON('ll_prefs', v); },
+  get stats(){ return readJSON('ll_stats', {}); },
+  set stats(v){ writeJSON('ll_stats', v); },
 };
 let current = null; // current book being read
 
@@ -259,6 +261,8 @@ function markReadingChoices(p){
   on('prefFont', p.font || 'serif');
   on('prefLh', p.lh || 1.75);
   on('prefWidth', p.width || 820);
+  on('prefNew', newPerDay());
+  on('prefSession', sessionCap());
 }
 // data-arg is "key:value"
 function setReadingPref(arg){
@@ -271,6 +275,7 @@ function setReadingPref(arg){
 function openReading(){
   markReadingChoices(DB.prefs);
   document.getElementById('prefEmail').value = DB.prefs.mmEmail || '';
+  document.getElementById('prefExercise').value = DB.prefs.revMode || 'mixed';
   paintConsent();
   openModal('readingModal');
 }
@@ -630,11 +635,11 @@ function renderChapter(){
   const pos = current.pos||0;
   const text = current.chapters[pos]||'';
   const container = document.getElementById('readerText');
-  const savedSet = new Set(DB.vocab.map(v=>v.term.toLowerCase()));
+  const marks = wordMarks();
   const paras = text.split(/\n\s*\n/);
   container.innerHTML = paras.map(p=>{
-    if(p.startsWith('## ')) return '<h2>'+wrapWords(p.slice(3), savedSet)+'</h2>';
-    return '<p>'+wrapWords(p, savedSet)+'</p>';
+    if(p.startsWith('## ')) return '<h2>'+wrapWords(p.slice(3), marks)+'</h2>';
+    return '<p>'+wrapWords(p, marks)+'</p>';
   }).join('');
   CHAP_SELECTS.forEach(id=>{ document.getElementById(id).value = String(pos); });
   document.getElementById('prevBtn').disabled = pos===0;
@@ -692,12 +697,37 @@ CHAP_SELECTS.forEach(id=>{
   });
 });
 
+// Which saved words to mark up in the text, and which of them are waiting to
+// be reviewed today. A word that comes back in a real sentence on the very day
+// it is due is worth more than the same word on a card, and it costs nothing.
+function wordMarks(){
+  const saved = new Map();   // lowercase form -> is it due today
+  const add = (form, due)=>{
+    if(!form) return;
+    saved.set(form, (saved.get(form) || false) || due);
+  };
+  DB.vocab.forEach(v=>{
+    const due = isDue(v);
+    add(v.term.toLowerCase(), due);
+    add((v.lemma || '').toLowerCase(), due);
+  });
+  return saved;
+}
+// A word saved as `run` is the same word as `running` in the text: the reader
+// does not want to be told they have not saved it yet.
+function markFor(low, marks){
+  if(marks.has(low)) return marks.get(low) ? 'w saved due' : 'w saved';
+  for(const form of baseForms(low)){
+    if(marks.has(form)) return marks.get(form) ? 'w saved due' : 'w saved';
+  }
+  return 'w';
+}
 // wrap each word-token in a clickable span, keep punctuation
-function wrapWords(str, savedSet){
+function wrapWords(str, marks){
   return str.replace(/\p{L}+(?:['’-]\p{L}+)*|[^\p{L}]+/gu, tok=>{
     if(/^\p{L}/u.test(tok)){
       const low = tok.toLowerCase();
-      let cls = savedSet.has(low) ? 'w saved' : 'w';
+      let cls = markFor(low, marks);
       if(searchTerm && low.includes(searchTerm)) cls += ' hit';
       return `<span class="${cls}">${esc(tok)}</span>`;
     }
@@ -804,18 +834,21 @@ pop.addEventListener('click', e=>{
     report('speak', { word: reportContent(popState.term) });
     pronounce(popState.audio, popState.term);
   }
-  else if(btn.dataset.act === 'save') saveVocab(popState.term, popState.trans);
+  else if(btn.dataset.act === 'save') saveVocab(popState.term, popState.trans, popState);
   else if(btn.dataset.act === 'settings'){ hidePopup(); openReading(); }
 });
 
+// Keyed by term, not by index: the list can be searched, filtered and sorted,
+// so a row's position says nothing about where the word is stored.
 document.getElementById('vocabList').addEventListener('click', e=>{
   const btn = e.target.closest('[data-act]');
   if(!btn) return;
-  const i = Number(btn.dataset.i);
+  const term = btn.dataset.term;
   if(btn.dataset.act === 'speak'){
-    const v = DB.vocab[i];
-    if(v){ report('speak', { word: reportContent(v.term) }); speak(v.term); }
-  } else if(btn.dataset.act === 'del') delVocab(i);
+    const v = DB.vocab[findVocab(term)];
+    if(v){ report('speak', { word: reportContent(v.term) }); pronounce(v.audio, v.term); }
+  } else if(btn.dataset.act === 'del') delVocab(term);
+  else if(btn.dataset.act === 'wake') wakeVocab(term);
 });
 
 document.getElementById('readerText').addEventListener('click', e=>{
@@ -827,7 +860,7 @@ document.getElementById('readerText').addEventListener('click', e=>{
   e.stopPropagation();
   const word = w.textContent.replace(/^[^\p{L}]+|[^\p{L}]+$/gu,'');
   showPopupNear(w);
-  lookupWord(word);
+  lookupWord(word, sourceOf(w));
 });
 
 // phrase selection — works on desktop (mouse) and mobile (touch).
@@ -835,6 +868,7 @@ document.getElementById('readerText').addEventListener('click', e=>{
 // "Traducir frase" button; tapping it translates the selected text.
 const selBtn = document.getElementById('selBtn');
 let selText = '';
+let selSource = null;
 let selUpdateT;
 
 function isInReader(node){
@@ -852,6 +886,7 @@ function updateSelButton(){
     hideSelButton(); return;
   }
   selText = txt;
+  selSource = sourceOfRange(sel.getRangeAt(0));
   const rect = sel.getRangeAt(0).getBoundingClientRect();
   selBtn.style.display='block';
   const bw = selBtn.offsetWidth || 150;
@@ -863,7 +898,7 @@ function updateSelButton(){
   selBtn.style.left = x+'px';
   selBtn.style.top = y+'px';
 }
-function hideSelButton(){ selBtn.style.display='none'; selText=''; }
+function hideSelButton(){ selBtn.style.display='none'; selText=''; selSource=null; }
 
 document.addEventListener('selectionchange', ()=>{
   clearTimeout(selUpdateT);
@@ -873,12 +908,12 @@ document.addEventListener('selectionchange', ()=>{
 // use pointerdown so it fires before the selection is cleared by the tap
 selBtn.addEventListener('pointerdown', e=>{
   e.preventDefault(); e.stopPropagation();
-  const txt = selText;
+  const txt = selText, source = selSource;
   if(!txt) return;
   const r = selBtn.getBoundingClientRect();
   hideSelButton();
   showPopupAt(r.left+window.scrollX, r.bottom+window.scrollY+6);
-  lookupPhrase(txt);
+  lookupPhrase(txt, source);
 });
 
 document.addEventListener('click', e=>{
@@ -984,10 +1019,23 @@ function wordPopupHtml(s){
 
 // The translation and the definition are painted as each arrives, so a slow or
 // dead dictionary no longer holds back the word the reader actually wants.
-function lookupWord(word){
+// The phonetics, the base form, the first definition and the sentence the word
+// was met in are all on screen already. Keeping them costs nothing and is what
+// lets the word be practised later instead of merely recognised.
+function firstDefOf(entry){
+  const m = entry && entry.meanings && entry.meanings[0];
+  const d = m && m.defs && m.defs[0];
+  const text = (d && d.def) || '';
+  return text.length > 200 ? text.slice(0, 197)+'…' : text;
+}
+
+function lookupWord(word, source){
   if(!word){ hidePopup(); return Promise.resolve(); }
   const turn = ++lookupSeq;
-  popState = { term: word, trans: '', audio: '' };
+  const src = source || blankSource();
+  popState = { term: word, trans: '', audio: '', kind: 'word',
+               lemma: '', phon: '', def: '',
+               ctx: src.ctx, book: src.book, chapter: src.chapter };
   const state = { word, entry: null, trans: null, dictPending: true, transPending: true,
                   dictError: null, transError: null };
   const paint = ()=>{ if(turn === lookupSeq) pop.innerHTML = wordPopupHtml(state); };
@@ -999,17 +1047,25 @@ function lookupWord(word){
   ).then(()=>{ state.transPending = false; paint(); });
 
   const defining = lookupDict(word).then(
-    d => { state.entry = d; popState.audio = (d && d.audio) || ''; },
+    d => {
+      state.entry = d;
+      popState.audio = (d && d.audio) || '';
+      popState.lemma = (d && d.matched) || '';
+      popState.phon = (d && d.phonetic) || '';
+      popState.def = firstDefOf(d);
+    },
     e => { state.dictError = e; }
   ).then(()=>{ state.dictPending = false; paint(); });
 
   return Promise.all([translating, defining]);
 }
 
-async function lookupPhrase(phrase){
+async function lookupPhrase(phrase, source){
   const turn = ++lookupSeq;
-  popState = { term: phrase, trans: '' };
-  popState.audio = '';
+  const src = source || blankSource();
+  popState = { term: phrase, trans: '', audio: '', kind: 'phrase',
+               lemma: '', phon: '', def: '',
+               ctx: '', book: src.book, chapter: src.chapter };
   const head = `<div class="head"><span class="term">Frase</span>
     <button class="spk" data-act="speak" title="Pronunciar">🔊</button></div>
     <div class="ex">“${esc(phrase)}”</div>`;
@@ -1268,16 +1324,65 @@ async function translate(text){
 }
 
 /* ============ VOCAB ============ */
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+// The day the reader is living in, not the one in Greenwich: at half past
+// midnight in Madrid a UTC "today" is still yesterday, and a card due today
+// would quietly fail to show up.
+function localISO(d){
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
+function todayISO(){ return localISO(new Date()); }
 function addDays(n){
   const d = new Date();
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0,10);
+  return localISO(d);
 }
-// Anything never reviewed, or scheduled for today or earlier, is due.
-function isDue(v){ return !v.due || v.due <= todayISO(); }
-function dueCount(){ return DB.vocab.filter(isDue).length; }
+
+// A word failed this many times is not being learned, it is being ground
+// through: it is set aside until the reader decides what to do with it.
+const LEECH_LAPSES = 8;
+// Scheduled three weeks out, a word no longer needs the app to stay in memory.
+const MATURE_DAYS = 21;
+// How many times a brand new word has to be answered right before it is
+// scheduled by date at all. Meeting a word once and then not again for a whole
+// day is exactly how it gets forgotten before its first real review.
+const LEARN_STEPS = 2;
+
+// Both limits are what keeps the habit alive: fifty words saved in one chapter
+// becoming fifty cards tomorrow morning is how a reader quits. 0 = no limit.
+function newPerDay(){
+  const n = DB.prefs.newPerDay;
+  return Number.isFinite(n) ? Math.max(0, n) : 10;
+}
+function sessionCap(){
+  const n = DB.prefs.sessionCap;
+  return Number.isFinite(n) ? Math.max(0, n) : 40;
+}
+
+// Items saved before phrases were told apart from words carry no kind.
+function kindOf(v){ return v.kind || (/\s/.test(v.term) ? 'phrase' : 'word'); }
+function isNew(v){ return !v.reviewed; }
+function isDue(v){ return !v.leech && (!v.due || v.due <= todayISO()); }
+function isMature(v){ return (v.interval || 0) >= MATURE_DAYS; }
+
+// The cards the reader will actually be shown, in the order they will meet
+// them: everything they have seen before first, then as many words they have
+// never met as the daily allowance still has room for.
+function dueQueue(list){
+  const vocab = list || DB.vocab;
+  const today = todayISO();
+  const live = vocab.filter(v=>!v.leech);
+  const seen = live.filter(v=>!isNew(v) && (!v.due || v.due <= today));
+  const fresh = live.filter(v=>isNew(v) && (!v.due || v.due <= today));
+  const allowance = newPerDay();
+  const room = allowance ? Math.max(0, allowance - statFor(today).new) : fresh.length;
+  const queue = seen.concat(fresh.slice(0, room));
+  const cap = sessionCap();
+  return cap ? queue.slice(0, cap) : queue;
+}
+function dueCount(){ return dueQueue().length; }
+
 function dueLabel(v){
+  if(v.leech) return 'en pausa';
   if(isDue(v)) return 'hoy';
   const days = Math.round((new Date(v.due) - new Date(todayISO())) / 86400000);
   return days === 1 ? 'mañana' : 'en '+days+' d';
@@ -1289,61 +1394,403 @@ function updateDueBadge(){
   el.classList.toggle('hidden', n === 0);
 }
 
-function saveVocab(term, trans){
+/* ---- STATS ---- */
+// One row per day: cards graded, and words met for the first time. It is what
+// the daily allowance is measured against, and what turns "I have 300 words"
+// into "I have shown up eleven days running", which is the part that keeps
+// anyone coming back.
+function statFor(day){
+  const row = (DB.stats.log || {})[day];
+  return { rev: (row && row.rev) || 0, new: (row && row.new) || 0 };
+}
+function bumpStat(field){
+  const s = DB.stats;
+  const log = s.log || (s.log = {});
+  const row = log[todayISO()] || (log[todayISO()] = { rev:0, new:0 });
+  row[field] = (row[field] || 0) + 1;
+  const days = Object.keys(log).sort();
+  while(days.length > 400) delete log[days.shift()];   // a year of history is plenty
+  DB.stats = s;
+}
+// Days in a row ending today. A day that has not been studied *yet* does not
+// break a streak: only a day that went by without a single review does.
+function streakDays(){
+  const log = DB.stats.log || {};
+  const d = new Date();
+  if(!(log[localISO(d)] || {}).rev) d.setDate(d.getDate() - 1);
+  let n = 0;
+  while((log[localISO(d)] || {}).rev){ n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+/* ---- SAVING ---- */
+// Where a word was met. A word remembered with the sentence it came from can
+// be practised in context later; the same word on its own can only ever be a
+// flashcard, and a flashcard is not what transfers to reading.
+function blankSource(){
+  return { ctx:'', book: current ? current.id : '', chapter: current ? (current.pos||0) : null };
+}
+function sourceOfRange(range){
+  const out = blankSource();
+  const node = range.startContainer;
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  const para = el && el.closest && el.closest('p, h2');
+  if(!para) return out;
+  const upTo = range.cloneRange();
+  upTo.selectNodeContents(para);
+  try{ upTo.setEnd(range.startContainer, range.startOffset); }catch(err){ return out; }
+  out.ctx = sentenceAt(para.textContent, upTo.toString().length);
+  return out;
+}
+function sourceOf(el){
+  const r = document.createRange();
+  r.selectNode(el);
+  return sourceOfRange(r);
+}
+// The sentence holding the character at `at`. One so long that quoting it
+// would fill the card is dropped: no context beats useless context.
+function sentenceAt(text, at){
+  const parts = text.match(/[^.!?]+(?:[.!?]+["'”’)\]]*|$)/g) || [text];
+  let acc = 0;
+  for(const part of parts){
+    if(at < acc + part.length){
+      const one = part.trim().replace(/\s+/g, ' ');
+      return (one.length > 300 || one.length < 3) ? '' : one;
+    }
+    acc += part.length;
+  }
+  return '';
+}
+
+// Everything the popup already had on screen is kept: throwing away the
+// phonetics, the definition and the sentence only to store a bare pair of
+// words is what makes a vocabulary list useless a month later.
+function saveVocab(term, trans, info){
   term = term.trim();
   if(!term) return;
+  const extra = info || {};
   const vocab = DB.vocab;
-  if(vocab.some(v=>v.term.toLowerCase()===term.toLowerCase())){ toast('Ya estaba en tu vocabulario'); hidePopup(); return; }
-  vocab.unshift({ term, trans, date: todayISO(), due: todayISO(), interval: 0, ease: 2.5, reps: 0 });
+  const lemma = (extra.lemma || '').toLowerCase();
+  const key = lemma || term.toLowerCase();
+  // went / gone / going are one word to learn, not three cards to fail
+  const twin = vocab.find(v=>v.term.toLowerCase() === term.toLowerCase() ||
+                             (v.lemma || v.term).toLowerCase() === key);
+  if(twin){
+    toast(twin.term.toLowerCase() === term.toLowerCase()
+      ? 'Ya estaba en tu vocabulario'
+      : 'Ya la tienes como «'+twin.term+'»');
+    hidePopup();
+    return;
+  }
+  vocab.unshift({
+    term,
+    trans: trans || '',
+    kind: extra.kind || (/\s/.test(term) ? 'phrase' : 'word'),
+    lemma: lemma && lemma !== term.toLowerCase() ? lemma : '',
+    phon: extra.phon || '',
+    audio: extra.audio || '',
+    def: extra.def || '',
+    ctx: extra.ctx || '',
+    book: extra.book || '',
+    chapter: Number.isInteger(extra.chapter) ? extra.chapter : null,
+    date: todayISO(), due: todayISO(),
+    interval: 0, ease: 2.5, reps: 0, step: 0, lapses: 0
+  });
   DB.vocab = vocab;
-  toast('⭐ Guardado: '+term);
+  toast('⭐ Guardado: '+term + (lemma && lemma !== term.toLowerCase() ? ' · base: '+lemma : ''));
   hidePopup();
   updateDueBadge();
   if(current) renderChapter();
 }
+
+/* ---- THE LIST ---- */
+const VOCAB_FILTERS = {
+  all:      ()=>true,
+  due:      isDue,
+  new:      isNew,
+  learning: v=>!isNew(v) && !v.leech && !isMature(v),
+  known:    isMature,
+  hard:     v=>!!v.leech || (v.lapses || 0) >= 3,
+  phrase:   v=>kindOf(v) === 'phrase'
+};
+// `added` keeps the stored order, which is newest first; Array#sort is stable.
+const VOCAB_SORTS = {
+  added: ()=>0,
+  alpha: (a,b)=>a.term.localeCompare(b.term, 'en'),
+  due:   (a,b)=>String(a.due||'').localeCompare(String(b.due||'')),
+  hard:  (a,b)=>(b.lapses||0) - (a.lapses||0)
+};
+
 function openVocab(){
-  const list = document.getElementById('vocabList');
+  renderVocab();
+  openModal('vocabModal');
+}
+function findVocab(term){
+  return DB.vocab.findIndex(v=>v.term === term);
+}
+function vocabTools(){
+  return {
+    q: normalizeAnswer(document.getElementById('vocabSearch').value),
+    filter: VOCAB_FILTERS[document.getElementById('vocabFilter').value] || VOCAB_FILTERS.all,
+    sort: VOCAB_SORTS[document.getElementById('vocabSort').value] || VOCAB_SORTS.added
+  };
+}
+// Three hundred words in one flat list is a wall nobody reads. What a reader
+// wants to find is the handful that are giving them trouble.
+function renderVocab(){
   const vocab = DB.vocab;
-  document.getElementById('vocabEmpty').classList.toggle('hidden', vocab.length>0);
+  const { q, filter, sort } = vocabTools();
+  const shown = vocab
+    .filter(v=>filter(v) &&
+      (!q || normalizeAnswer(v.term+' '+(v.trans||'')+' '+(v.lemma||'')).includes(q)))
+    .sort(sort);
+
+  document.getElementById('vocabStats').innerHTML = vocabStatsHtml(vocab);
   const due = dueCount();
   document.getElementById('revCount').textContent = due ? ' ('+due+')' : '';
-  list.innerHTML = vocab.map((v,i)=>`
-    <div class="vocab-item">
-      <span class="vt" lang="en">${esc(v.term)}</span>
-      <span class="vd">${esc(v.trans||'—')}</span>
-      <span class="vwhen" title="Próximo repaso">${esc(dueLabel(v))}</span>
-      <button class="spk" data-act="speak" data-i="${i}" title="Pronunciar">🔊</button>
-      <button class="vdel" data-act="del" data-i="${i}" title="Eliminar">✕</button>
+  document.getElementById('vocabEmpty').classList.toggle('hidden', vocab.length > 0);
+  const none = document.getElementById('vocabNone');
+  none.classList.toggle('hidden', !vocab.length || shown.length > 0);
+
+  document.getElementById('vocabList').innerHTML = shown.map(v=>`
+    <div class="vocab-item" data-state="${vocabState(v)}">
+      <span class="vt" lang="en">${esc(v.term)}${v.lemma ? `<i class="vlem">≈ ${esc(v.lemma)}</i>` : ''}</span>
+      <span class="vd">${esc(v.trans||'—')}${v.ctx ? `<i class="vctx">“${esc(v.ctx)}”</i>` : ''}</span>
+      <span class="vwhen" title="Próximo repaso">${esc(dueLabel(v))}${
+        (v.lapses || 0) >= 3 ? `<i class="vfails">${v.lapses} fallos</i>` : ''}</span>
+      <button class="spk" data-act="speak" data-term="${esc(v.term)}" title="Pronunciar">🔊</button>
+      ${v.leech ? `<button class="vwake" data-act="wake" data-term="${esc(v.term)}" title="En pausa: reactivar">🐌</button>` : ''}
+      <button class="vdel" data-act="del" data-term="${esc(v.term)}" title="Eliminar">✕</button>
     </div>`).join('');
-  openModal('vocabModal');
   updateDueBadge();
 }
-function delVocab(i){
+function vocabState(v){
+  if(v.leech) return 'hard';
+  if(isNew(v)) return 'new';
+  return isMature(v) ? 'known' : 'learning';
+}
+// Numbers only, so the interpolation into markup is safe.
+function vocabStatsHtml(vocab){
+  const today = statFor(todayISO());
+  const streak = streakDays();
+  const known = vocab.filter(isMature).length;
+  const bits = [
+    streak ? '🔥 <b>'+streak+'</b> '+(streak === 1 ? 'día seguido' : 'días seguidos')
+           : '🔥 Empieza hoy tu racha',
+    '⭐ <b>'+vocab.length+'</b> guardadas',
+    '🎯 <b>'+dueCount()+'</b> para hoy',
+    '✅ <b>'+known+'</b> aprendidas'
+  ];
+  if(today.rev) bits.push('📅 <b>'+today.rev+'</b> repasadas hoy');
+  return bits.map(b=>'<span>'+b+'</span>').join('');
+}
+
+function delVocab(term){
+  const i = findVocab(term);
+  if(i < 0) return;
   const vocab = DB.vocab;
-  if(!vocab[i]) return;
-  vocab.splice(i,1); DB.vocab = vocab;
-  openVocab(); if(current) renderChapter();
+  vocab.splice(i, 1); DB.vocab = vocab;
+  renderVocab(); if(current) renderChapter();
+}
+// A suspended word is not a deleted one: the reader may well want it back once
+// they have met it a few more times in a real book.
+function wakeVocab(term){
+  const i = findVocab(term);
+  if(i < 0) return;
+  const vocab = DB.vocab;
+  vocab[i].leech = false;
+  vocab[i].lapses = 0;
+  vocab[i].due = todayISO();
+  DB.vocab = vocab;
+  toast('«'+vocab[i].term+'» vuelve al repaso');
+  renderVocab();
 }
 function clearVocab(){
   if(!confirm('¿Vaciar todo el vocabulario?')) return;
-  DB.vocab = []; openVocab(); if(current) renderChapter();
+  DB.vocab = []; renderVocab(); if(current) renderChapter();
 }
 
 /* ============ REVIEW (spaced repetition) ============ */
-// Simplified SM-2. Cards are held by reference in revVocab, so grading one
-// and writing the whole array back keeps the schedule in sync.
+// Simplified SM-2 with an Anki-style learning phase. Cards are held by
+// reference in revVocab, so grading one and writing the whole array back keeps
+// the schedule in sync.
 let revVocab = null, revQueue = [], revCard = null;
+let revMode = 'flip', revPhase = 'ask', revVerdict = null, revChosen = '';
 
+// Recognising a word is far easier than producing it, so these run from the
+// easiest to the hardest and a card climbs as it matures.
+const MODES = {
+  mixed:  '🎲 Mixto',
+  choice: '🔢 Test',
+  flip:   '🔁 Tarjeta',
+  type:   '⌨️ Escribir',
+  cloze:  '␣ Hueco',
+  listen: '👂 Dictado'
+};
+// The ones where the reader has to produce the English word themselves, and so
+// the ones the app can grade instead of asking them to grade themselves.
+const TYPED = ['type', 'cloze', 'listen'];
+const ASKS = {
+  flip:   '¿Qué significa?',
+  choice: 'Elige la respuesta',
+  type:   'Escríbela en inglés',
+  cloze:  'Completa la frase del libro',
+  listen: 'Escucha y escríbela'
+};
+
+function vocabPool(){ return revVocab || DB.vocab; }
+
+// Only an exact appearance is blanked out: guessing where an inflected form
+// sits in a sentence would hide the wrong thing often enough to be worse than
+// not offering the exercise at all.
+function clozeOf(card){
+  if(!card.ctx || kindOf(card) === 'phrase') return null;
+  const at = card.ctx.toLowerCase().indexOf(card.term.toLowerCase());
+  if(at === -1) return null;
+  return {
+    before: card.ctx.slice(0, at),
+    word:   card.ctx.slice(at, at + card.term.length),
+    after:  card.ctx.slice(at + card.term.length)
+  };
+}
+
+// A shuffle that depends only on the card, so getting a card wrong and meeting
+// it again in the same session does not move the options around underneath.
+function shuffleWith(list, seedText){
+  let seed = 7;
+  for(const ch of String(seedText)) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const out = list.slice();
+  for(let i = out.length - 1; i > 0; i--){
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    const j = seed % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+function shuffle(list){
+  const out = list.slice();
+  for(let i = out.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// The distractors come from the reader's own vocabulary: words they might
+// plausibly confuse, rather than words they have never seen.
+function choicesFor(card){
+  const reverse = !!DB.prefs.revReverse;
+  const answer = (reverse ? card.term : card.trans) || '';
+  if(!answer) return [];
+  const seen = new Set([normalizeAnswer(answer)]);
+  const others = [];
+  for(const v of vocabPool()){
+    if(v.term === card.term || kindOf(v) === 'phrase') continue;
+    const text = (reverse ? v.term : v.trans) || '';
+    const key = normalizeAnswer(text);
+    if(!key || seen.has(key)) continue;
+    seen.add(key); others.push(text);
+  }
+  if(others.length < 3) return [];
+  return shuffleWith(shuffleWith(others, card.term).slice(0, 3).concat(answer), card.term+'!');
+}
+
+function supportsMode(card, mode){
+  if(kindOf(card) === 'phrase') return mode === 'flip';   // typing a whole phrase is cruel
+  if(mode === 'cloze') return !!clozeOf(card);
+  if(mode === 'choice') return choicesFor(card).length > 1;
+  if(mode === 'listen') return 'speechSynthesis' in window;
+  if(mode === 'type') return !!card.trans;                // nothing to prompt with otherwise
+  return true;
+}
+// Fixed rather than random: a reader who knows what is coming answers the
+// word, not the format.
+function pickMode(card){
+  const forced = DB.prefs.revMode || 'mixed';
+  if(forced !== 'mixed') return supportsMode(card, forced) ? forced : 'flip';
+  const reps = card.reps || 0;
+  const wanted = reps === 0 ? ['choice', 'flip']
+               : reps < 3   ? ['type', 'choice']
+               : reps % 2   ? ['cloze', 'type']
+                            : ['listen', 'cloze', 'type'];
+  return wanted.find(m=>supportsMode(card, m)) || 'flip';
+}
+
+/* ---- ANSWER CHECKING ---- */
+// Accents, case and punctuation are not what is being tested.
+function normalizeAnswer(s){
+  return String(s || '').toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+// Optimal string alignment: Levenshtein, except that two letters typed in the
+// wrong order count as the one slip they are. Transposing a pair is far and
+// away the commonest typo, and counting it as two mistakes would fail a reader
+// who knew the word perfectly well.
+function editDistance(a, b){
+  const m = a.length, n = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => {
+    const row = new Array(n + 1).fill(0);
+    row[0] = i;
+    return row;
+  });
+  for(let j = 0; j <= n; j++) d[0][j] = j;
+  for(let i = 1; i <= m; i++){
+    for(let j = 1; j <= n; j++){
+      d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1,
+                         d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+      if(i > 1 && j > 1 && a[i-1] === b[j-2] && a[i-2] === b[j-1]){
+        d[i][j] = Math.min(d[i][j], d[i-2][j-2] + 1);
+      }
+    }
+  }
+  return d[m][n];
+}
+// One slipped key is a typing mistake, not a word the reader does not know.
+function nearMiss(answer, given){
+  if(answer.length < 4 || Math.abs(answer.length - given.length) > 1) return false;
+  return editDistance(answer, given) === 1;
+}
+// The production exercises always ask for the English word, whichever way the
+// flashcards happen to be turned: producing Spanish is not the thing a Spanish
+// speaker needs to practise.
+function acceptedAnswers(card){
+  return [card.term, card.lemma].map(normalizeAnswer).filter(Boolean);
+}
+function checkAnswer(text){
+  const given = normalizeAnswer(text);
+  if(!given) return 'blank';
+  const answers = acceptedAnswers(revCard);
+  if(answers.includes(given)) return 'right';
+  if(answers.some(a=>nearMiss(a, given))) return 'close';
+  return 'wrong';
+}
+// What the card is showing as the right answer once it is turned over.
+function answerText(card){
+  if(revMode === 'flip' || revMode === 'choice'){
+    return DB.prefs.revReverse ? card.term : (card.trans || '—');
+  }
+  return card.term;
+}
+function answerLang(card){
+  return (revMode === 'flip' || revMode === 'choice') && !DB.prefs.revReverse ? 'es' : 'en';
+}
+
+/* ---- SESSION ---- */
 function openReview(){
   revVocab = DB.vocab;
-  revQueue = revVocab.filter(isDue);
-  if(!revQueue.length){ toast('Nada que repasar hoy 🎉'); return; }
-  for(let i = revQueue.length-1; i > 0; i--){          // shuffle
-    const j = Math.floor(Math.random()*(i+1));
-    [revQueue[i], revQueue[j]] = [revQueue[j], revQueue[i]];
+  const queue = dueQueue(revVocab);
+  if(!queue.length){
+    toast(DB.vocab.some(isDue) ? 'Ya has hecho lo de hoy 🎉' : 'Nada que repasar hoy 🎉');
+    return;
   }
+  // what they have met before comes first: clearing the backlog matters more
+  // than meeting yet another new word
+  revQueue = shuffle(queue.filter(v=>!isNew(v))).concat(shuffle(queue.filter(isNew)));
   closeModal('vocabModal');
   paintReviewDirection();
+  paintReviewMode();
   openModal('reviewModal');
   report('review_open');
   nextCard();
@@ -1354,7 +1801,7 @@ function reviewDirection(){
   p.revReverse = !p.revReverse;
   DB.prefs = p;
   paintReviewDirection();
-  if(revCard) nextCard.show(revCard);
+  if(revCard){ revMode = pickMode(revCard); revPhase = 'ask'; revVerdict = null; renderReview(); }
 }
 function paintReviewDirection(){
   const btn = document.getElementById('revDirBtn');
@@ -1364,60 +1811,252 @@ function paintReviewDirection(){
     ? 'Repaso de español a inglés. Pulsa para cambiar.'
     : 'Repaso de inglés a español. Pulsa para cambiar.');
 }
+function reviewMode(value){
+  const p = DB.prefs;
+  p.revMode = MODES[value] ? value : 'mixed';
+  DB.prefs = p;
+  paintReviewMode();
+  if(revCard){ revMode = pickMode(revCard); revPhase = 'ask'; revVerdict = null; renderReview(); }
+}
+// The same choice is offered where it is decided (Settings) and where it is
+// felt (mid-review), so both have to be kept saying the same thing.
+function paintReviewMode(){
+  const value = DB.prefs.revMode || 'mixed';
+  document.getElementById('revModeSel').value = value;
+  document.getElementById('prefExercise').value = value;
+}
 
 function nextCard(){
   revCard = revQueue.shift() || null;
-  const done = !revCard;
-  document.getElementById('revDone').classList.toggle('hidden', !done);
-  document.getElementById('revCard').classList.toggle('hidden', done);
-  document.getElementById('revShowRow').classList.toggle('hidden', done);
-  document.getElementById('revGradeRow').classList.add('hidden');
-  document.getElementById('revTrans').classList.add('hidden');
-  document.getElementById('revProgress').textContent = done ? '' : (revQueue.length+1)+' por repasar';
-  if(!done) nextCard.show(revCard);
+  revPhase = 'ask';
+  revVerdict = null;
+  revChosen = '';
+  revMode = revCard ? pickMode(revCard) : 'flip';
+  renderReview();
+  if(!revCard) return;
+  if(revMode === 'listen') pronounce(revCard.audio, revCard.term);
+  if(TYPED.includes(revMode)) document.getElementById('revInput').focus();
 }
 
-// Which side of the card faces up. Recognising a word is much easier than
-// producing it, so the reverse direction is where the learning happens.
-nextCard.show = function(card){
-  const reverse = !!DB.prefs.revReverse;
-  const front = document.getElementById('revTerm');
-  const back = document.getElementById('revTrans');
-  front.textContent = reverse ? (card.trans || '—') : card.term;
-  front.lang = reverse ? 'es' : 'en';
-  back.textContent = reverse ? card.term : (card.trans || '—');
-  back.lang = reverse ? 'en' : 'es';
-};
+function renderReview(){
+  const card = revCard, done = !card;
+  const show = (id, on)=>document.getElementById(id).classList.toggle('hidden', !on);
+  show('revDone', done);
+  show('revCard', !done);
+  document.getElementById('revProgress').textContent =
+    done ? '' : (revQueue.length + 1) + ' por repasar';
+  if(done){
+    ['revShowRow','revGradeRow','revTypeRow','revChoiceRow','revVerdict'].forEach(id=>show(id, false));
+    paintDone();
+    return;
+  }
 
+  const reverse = !!DB.prefs.revReverse;
+  const answering = revPhase === 'answer';
+  const cloze = revMode === 'cloze' ? clozeOf(card) : null;
+
+  document.getElementById('revKind').textContent = ASKS[revMode] ||
+    (reverse ? '¿Cómo se dice en inglés?' : ASKS.flip);
+
+  // the question
+  const front = document.getElementById('revTerm');
+  if(revMode === 'listen'){
+    front.textContent = '🔊';
+    front.lang = 'en';
+  }else if(revMode === 'type' || revMode === 'cloze'){
+    front.textContent = card.trans || '—';
+    front.lang = 'es';
+  }else{
+    front.textContent = reverse ? (card.trans || '—') : card.term;
+    front.lang = reverse ? 'es' : 'en';
+  }
+
+  // the sentence it was met in: gapped while asking, whole once answered
+  const ctx = document.getElementById('revCtx');
+  if(cloze && !answering){
+    ctx.innerHTML = esc(cloze.before) +
+      '<b class="gap">'+'▁'.repeat(Math.min(12, Math.max(3, cloze.word.length)))+'</b>' +
+      esc(cloze.after);
+  }else if(card.ctx && answering){
+    ctx.innerHTML = markTerm(card.ctx, card.term);
+  }else{
+    ctx.innerHTML = '';
+  }
+  show('revCtx', !!ctx.innerHTML);
+
+  // the answer
+  const back = document.getElementById('revTrans');
+  back.textContent = answerText(card);
+  back.lang = answerLang(card);
+  show('revTrans', answering);
+  const givesItAway = !answering &&
+    (TYPED.includes(revMode) ? revMode !== 'listen' : reverse);
+  show('revSpk', !givesItAway);
+  const extra = document.getElementById('revExtra');
+  extra.innerHTML = answering ? extraHtml(card) : '';
+  show('revExtra', answering && !!extra.innerHTML);
+  show('revSrc', answering && !!card.book && booksCache.some(b=>b.id === card.book));
+
+  // how it is answered
+  show('revShowRow', !answering && revMode === 'flip');
+  show('revTypeRow', !answering && TYPED.includes(revMode));
+  show('revChoiceRow', revMode === 'choice');
+  if(revMode === 'choice') paintChoices(card);
+  if(!answering && TYPED.includes(revMode)){
+    const input = document.getElementById('revInput');
+    input.value = '';
+    input.placeholder = revMode === 'cloze' ? 'la palabra que falta…' : 'en inglés…';
+  }
+  paintVerdict(card);
+  show('revGradeRow', answering);
+  if(answering) paintGradeRow();
+}
+
+function markTerm(sentence, term){
+  const at = sentence.toLowerCase().indexOf(term.toLowerCase());
+  if(at === -1) return esc(sentence);
+  return esc(sentence.slice(0, at)) + '<mark>' + esc(sentence.slice(at, at + term.length)) +
+         '</mark>' + esc(sentence.slice(at + term.length));
+}
+// Everything the reader saw in the popup when they saved the word, given back
+// at the moment it is most useful: right after they tried to remember it.
+function extraHtml(card){
+  const head = [];
+  if(card.phon) head.push(esc(card.phon));
+  if(card.lemma) head.push('≈ '+esc(card.lemma));
+  let html = head.length ? '<div class="rev-phon">'+head.join(' · ')+'</div>' : '';
+  if(revMode === 'listen' && card.trans)
+    html += '<div class="rev-mean">🇪🇸 '+esc(card.trans)+'</div>';
+  if(card.def) html += '<div class="rev-def">'+esc(card.def)+'</div>';
+  return html;
+}
+
+function paintChoices(card){
+  const row = document.getElementById('revChoiceRow');
+  const answering = revPhase === 'answer';
+  const right = normalizeAnswer(answerText(card));
+  row.innerHTML = choicesFor(card).map(text=>{
+    let cls = 'revchoice';
+    if(answering && normalizeAnswer(text) === right) cls += ' ok';
+    else if(answering && text === revChosen) cls += ' no';
+    return `<button class="${cls}" data-act="choose" data-text="${esc(text)}"${answering ? ' disabled' : ''}>${esc(text)}</button>`;
+  }).join('');
+}
+
+const VERDICTS = {
+  right: { cls:'ok', text: t=>'✅ Correcto' },
+  close: { cls:'ok', text: t=>'✅ Casi: se escribe «'+t+'»' },
+  wrong: { cls:'no', text: t=>'❌ Era «'+t+'»' },
+  blank: { cls:'no', text: t=>'La respuesta era «'+t+'»' }
+};
+function paintVerdict(card){
+  const el = document.getElementById('revVerdict');
+  const v = revPhase === 'answer' && revVerdict ? VERDICTS[revVerdict] : null;
+  el.className = 'rev-verdict' + (v ? ' '+v.cls : '');
+  el.textContent = v ? v.text(answerText(card)) : '';
+  el.classList.toggle('hidden', !v);
+}
+// An exercise the app could grade itself has already answered the question the
+// three buttons are asking, so it only offers the honest ones.
+function paintGradeRow(){
+  const allow = revVerdict === 'right' ? [1, 2]
+              : revVerdict === 'close' ? [0, 1, 2]
+              : revVerdict             ? [0]
+                                       : [0, 1, 2];
+  [...document.getElementById('revGradeRow').querySelectorAll('button')].forEach(b=>{
+    b.classList.toggle('hidden', !allow.includes(Number(b.dataset.arg)));
+  });
+}
+function paintDone(){
+  const today = statFor(todayISO());
+  const streak = streakDays();
+  document.getElementById('revDone').innerHTML = '¡Repaso terminado! 🎉<span class="rev-tally">' +
+    today.rev + ' ' + (today.rev === 1 ? 'repaso' : 'repasos') + ' hoy' +
+    (streak ? ' · 🔥 racha de '+streak+' '+(streak === 1 ? 'día' : 'días') : '') + '</span>';
+}
+
+/* ---- ANSWERING ---- */
 function revealCard(){
-  if(!revCard) return;
-  document.getElementById('revTrans').classList.remove('hidden');
-  document.getElementById('revShowRow').classList.add('hidden');
-  document.getElementById('revGradeRow').classList.remove('hidden');
+  if(!revCard || revPhase === 'answer') return;
+  // giving up on a word you were asked to produce is an answer too
+  if(TYPED.includes(revMode)) revVerdict = checkAnswer(document.getElementById('revInput').value);
+  revPhase = 'answer';
+  renderReview();
+}
+function checkTyped(){ revealCard(); }
+function chooseOption(text){
+  if(!revCard || revPhase === 'answer') return;
+  revChosen = text;
+  revVerdict = normalizeAnswer(text) === normalizeAnswer(answerText(revCard)) ? 'right' : 'wrong';
+  revPhase = 'answer';
+  renderReview();
+}
+// The keyboard and the auto-graded exercises both need "carry on with whatever
+// this answer earned" without picking a button by hand.
+function gradeDefault(){
+  if(revPhase !== 'answer') return;
+  if(!revVerdict) return;                       // a flashcard is graded by hand
+  gradeCard(revVerdict === 'wrong' || revVerdict === 'blank' ? 0 : 1);
+}
+function gradeIfAllowed(grade){
+  const btn = document.querySelector('#revGradeRow button[data-arg="'+grade+'"]');
+  if(btn && !btn.classList.contains('hidden')) gradeCard(grade);
+}
+
+// A failed or still-learning card is put back a few places along, not at the
+// very end: it has to come round again while the reader still remembers seeing
+// it, which is the whole point of a learning step.
+function requeue(card, after){
+  revQueue.splice(Math.min(after, revQueue.length), 0, card);
 }
 
 // grade: 0 again, 1 good, 2 easy
 function gradeCard(grade){
   if(!revCard) return;
   const c = revCard;
+  const first = isNew(c);
   report('review_grade', {
     label: ['again','good','easy'][grade] || String(grade),
+    mode: revMode,
     word: reportContent(c.term)
   });
-  c.ease = Math.max(1.3, Math.min(3, (c.ease || 2.5) + (grade === 0 ? -0.2 : grade === 2 ? 0.15 : 0)));
+
   if(grade === 0){
-    c.reps = 0;
-    c.interval = 0;
+    c.lapses = (c.lapses || 0) + 1;
+    if(c.reps) c.ease = Math.max(1.3, Math.min(3, (c.ease || 2.5) - 0.2));
+    c.reps = 0; c.step = 0; c.interval = 0;
+    c.due = todayISO();
+  }else if(!c.reps){
+    // still learning: it has to come back inside this session before it is
+    // scheduled by date at all
+    c.step = (c.step || 0) + (grade === 2 ? LEARN_STEPS : 1);
+    if(c.step >= LEARN_STEPS){
+      c.reps = 1;
+      c.interval = grade === 2 ? 3 : 1;
+      c.due = addDays(c.interval);
+    }else{
+      c.reps = 0;              // stored explicitly: the card is shaped, not half-written
+      c.interval = 0;
+      c.due = todayISO();
+    }
   }else{
-    c.reps = (c.reps || 0) + 1;
-    if(c.reps === 1) c.interval = grade === 2 ? 3 : 1;
-    else if(c.reps === 2) c.interval = grade === 2 ? 10 : 6;
+    c.ease = Math.max(1.3, Math.min(3, (c.ease || 2.5) + (grade === 2 ? 0.15 : 0)));
+    c.reps++;
+    if(c.reps === 2) c.interval = grade === 2 ? 10 : 6;
     else c.interval = Math.max(1, Math.round((c.interval || 1) * c.ease * (grade === 2 ? 1.3 : 1)));
+    c.due = addDays(c.interval);
   }
-  c.due = addDays(c.interval);
   c.reviewed = todayISO();
+  if((c.lapses || 0) >= LEECH_LAPSES && !c.leech){
+    c.leech = true;
+    toast('«'+c.term+'» se te resiste: en pausa. Reactívala en ⭐ Vocabulario.');
+  }
   DB.vocab = revVocab;
-  if(grade === 0) revQueue.push(c);   // a failed card comes back this session
+  bumpStat('rev');
+  if(first) bumpStat('new');
+
+  if(c.leech) revQueue = revQueue.filter(x=>x !== c);
+  else if(!c.reps) requeue(c, grade === 0 ? 2 : 4);
   nextCard();
   updateDueBadge();
 }
@@ -1426,20 +2065,56 @@ function closeReview(){
   closeModal('reviewModal');
   revCard = null; revQueue = [];
   updateDueBadge();
+  if(document.getElementById('vocabModal').style.display === 'flex') renderVocab();
   if(current) renderChapter();
+}
+
+// Back to the page the word was met on, with it highlighted. A word practised
+// where it was read is the one thing a reader with a book can do that a stack
+// of flashcards cannot.
+function goToSource(){
+  const c = revCard;
+  if(!c || !c.book) return;
+  const book = booksCache.find(b=>b.id === c.book);
+  if(!book){ toast('Ese libro ya no está en tu biblioteca'); return; }
+  closeReview();
+  closeModal('vocabModal');
+  searchTerm = c.term.toLowerCase();
+  openBook(book.id);
+  goToChapter(Math.min(Math.max(c.chapter || 0, 0), book.chapters.length - 1));
+  requestAnimationFrame(()=>{
+    const first = document.querySelector('#readerText .w.hit');
+    if(first) first.scrollIntoView({ block:'center' });
+  });
 }
 
 // always the English side, whichever way round the card is shown
 document.getElementById('revSpk').addEventListener('click', ()=>{
   if(!revCard) return;
   report('speak', { word: reportContent(revCard.term) });
-  speak(revCard.term);
+  pronounce(revCard.audio, revCard.term);
 });
+document.getElementById('revChoiceRow').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-act="choose"]');
+  if(btn) chooseOption(btn.dataset.text);
+});
+['vocabSearch','vocabFilter','vocabSort'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', renderVocab);
+});
+['revModeSel','prefExercise'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', e=>reviewMode(e.target.value));
+});
+
+// The context and the schedule are the part worth keeping: a bare pair of
+// columns is what every other export already gives you.
 function exportVocab(){
   const vocab = DB.vocab;
   if(!vocab.length){ toast('No hay nada que exportar'); return; }
-  const csv = 'term,translation,date\n'+vocab.map(v=>
-    `"${v.term.replace(/"/g,'""')}","${(v.trans||'').replace(/"/g,'""')}","${v.date||''}"`).join('\n');
+  const cell = v=>'"'+String(v == null ? '' : v).replace(/"/g,'""')+'"';
+  const csv = ['term,lemma,translation,context,added,due,interval,lapses']
+    .concat(vocab.map(v=>[v.term, v.lemma||'', v.trans||'', v.ctx||'', v.date||'',
+                          v.due||'', v.interval||0, v.lapses||0].map(cell).join(',')))
+    .join('\n');
   downloadBlob(new Blob([csv],{type:'text/csv'}), 'vocabulario.csv');
 }
 
@@ -1461,7 +2136,8 @@ function exportLibrary(){
     exported: new Date().toISOString(),
     books: booksCache,
     vocab,
-    prefs: DB.prefs
+    prefs: DB.prefs,
+    stats: DB.stats
   };
   downloadBlob(new Blob([JSON.stringify(backup)], {type:'application/json'}),
                'leerlibros-'+new Date().toISOString().slice(0,10)+'.json');
@@ -1490,14 +2166,28 @@ function cleanBook(b){
 function cleanVocabItem(v){
   if(!v || typeof v !== 'object' || typeof v.term !== 'string' || !v.term.trim()) return null;
   const day = /^\d{4}-\d{2}-\d{2}$/;
+  const text = (value, max)=>typeof value === 'string' ? value.slice(0, max) : '';
+  const term = v.term.trim();
   return {
-    term: v.term.trim(),
-    trans: typeof v.trans === 'string' ? v.trans : '',
+    term,
+    trans: text(v.trans, 300),
+    kind: v.kind === 'phrase' || /\s/.test(term) ? 'phrase' : 'word',
+    lemma: text(v.lemma, 60),
+    phon: text(v.phon, 80),
+    audio: /^https:\/\//.test(v.audio) ? v.audio : '',
+    def: text(v.def, 300),
+    ctx: text(v.ctx, 300),
+    book: text(v.book, 40),
+    chapter: Number.isInteger(v.chapter) ? Math.max(0, v.chapter) : null,
     date: typeof v.date === 'string' ? v.date : todayISO(),
     due: day.test(v.due) ? v.due : todayISO(),
+    reviewed: day.test(v.reviewed) ? v.reviewed : undefined,
     interval: Number.isFinite(v.interval) ? Math.max(0, Math.round(v.interval)) : 0,
     ease: Number.isFinite(v.ease) ? Math.min(3, Math.max(1.3, v.ease)) : 2.5,
-    reps: Number.isInteger(v.reps) ? Math.max(0, v.reps) : 0
+    reps: Number.isInteger(v.reps) ? Math.max(0, v.reps) : 0,
+    step: Number.isInteger(v.step) ? Math.max(0, v.step) : 0,
+    lapses: Number.isInteger(v.lapses) ? Math.max(0, v.lapses) : 0,
+    leech: !!v.leech
   };
 }
 
@@ -1535,6 +2225,23 @@ async function importLibrary(file){
       vocab.push(v); newWords++;
     });
     if(newWords) DB.vocab = vocab;
+  }
+
+  // Day rows are merged, never replaced: restoring an old copy must not wipe
+  // out the days studied since it was made.
+  if(data.stats && typeof data.stats.log === 'object' && data.stats.log){
+    const stats = DB.stats;
+    const log = stats.log || (stats.log = {});
+    for(const day of Object.keys(data.stats.log)){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      const row = data.stats.log[day] || {};
+      const here = log[day] || { rev:0, new:0 };
+      log[day] = {
+        rev: Math.max(here.rev || 0, Number(row.rev) || 0),
+        new: Math.max(here.new || 0, Number(row.new) || 0)
+      };
+    }
+    DB.stats = stats;
   }
 
   if(data.prefs && typeof data.prefs === 'object'){
@@ -1636,6 +2343,8 @@ const ACTIONS = {
   clearVocab: ()=>clearVocab(),
   openReview: ()=>openReview(),
   revealCard: ()=>revealCard(),
+  checkTyped: ()=>checkTyped(),
+  goToSource: ()=>goToSource(),
   grade: el=>gradeCard(Number(el.dataset.arg)),
   closeReview: ()=>closeReview(),
   closeModal: el=>closeModal(el.dataset.arg),
@@ -1667,12 +2376,28 @@ function openModals(){
   return [...document.querySelectorAll('.modal-bg')].filter(m=>m.style.display==='flex');
 }
 document.addEventListener('keydown', e=>{
-  // Reviewing: space reveals, 1/2/3 grade.
+  // Reviewing: space reveals, 1/2/3 grade, and in a multiple choice 1-4 answer.
+  // Enter carries on once the app has graded the answer itself.
   if(document.getElementById('reviewModal').style.display==='flex'){
     if(e.key==='Escape') return closeReview();
-    const grading = !document.getElementById('revGradeRow').classList.contains('hidden');
-    if(!grading && (e.key===' ' || e.key==='Enter')){ e.preventDefault(); revealCard(); }
-    else if(grading && ['1','2','3'].includes(e.key)) gradeCard(Number(e.key)-1);
+    if(e.target === document.getElementById('revInput')){
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        revPhase === 'answer' ? gradeDefault() : checkTyped();
+      }
+      return;
+    }
+    if(revPhase === 'answer'){
+      if(['1','2','3'].includes(e.key)) gradeIfAllowed(Number(e.key)-1);
+      else if(e.key===' ' || e.key==='Enter'){ e.preventDefault(); gradeDefault(); }
+      return;
+    }
+    if(revMode === 'choice' && /^[1-4]$/.test(e.key)){
+      const btn = document.querySelectorAll('#revChoiceRow button')[Number(e.key)-1];
+      if(btn) chooseOption(btn.dataset.text);
+      return;
+    }
+    if(e.key===' ' || e.key==='Enter'){ e.preventDefault(); revealCard(); }
     return;
   }
   const modals = openModals();

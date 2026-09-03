@@ -82,7 +82,7 @@ test.describe('reverse review', () => {
   test('the card can be turned round, and the sides are tagged by language', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
-      DB.vocab = [{ term: 'dawn', trans: 'amanecer', due: new Date().toISOString().slice(0, 10) }];
+      DB.vocab = [{ term: 'dawn', trans: 'amanecer', due: todayISO() }];
       updateDueBadge();
     });
     await page.locator('[data-action="openVocab"]').click();

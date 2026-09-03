@@ -74,6 +74,8 @@
   .w{cursor:pointer; border-radius:4px; padding:0 1px; transition:background .1s}
   .w:hover{background:var(--accent-soft)}
   .w.saved{border-bottom:2px solid var(--accent)}
+  /* saved and waiting for a review today: met again in a real sentence */
+  .w.saved.due{background:var(--accent-soft)}
   .chapnav{display:flex; align-items:center; gap:12px; justify-content:space-between; margin:22px 4px}
   .chapnav .pageinfo{color:var(--muted); font-size:13px}
   .chapsel{
@@ -133,17 +135,45 @@
     display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border);
   }
   .vocab-item .vt{font-weight:700; color:var(--accent); min-width:110px}
-  .vocab-item .vd{flex:1; font-size:14px; color:var(--ink)}
+  .vocab-item .vd{flex:1; font-size:14px; color:var(--ink); min-width:0}
+  .vocab-item .vlem,.vocab-item .vctx{
+    display:block; font-style:normal; font-weight:400; font-size:11px; color:var(--muted);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .vocab-item .vctx{font-style:italic; margin-top:2px}
+  /* a word set aside has earned a quieter row than one being learned */
+  .vocab-item[data-state="hard"]{opacity:.62}
+  .vocab-item[data-state="known"] .vwhen{color:#2e7d32}
+  .vocab-item .vwake{border:none; background:transparent; cursor:pointer; font-size:15px}
+  .vocab-item .vfails{display:block; font-style:normal; font-size:10px; color:#c0392b}
+  .vocab-stats{
+    display:flex; flex-wrap:wrap; gap:6px 14px; margin:0 0 12px; padding-bottom:12px;
+    border-bottom:1px solid var(--border); font-size:13px; color:var(--muted);
+  }
+  .vocab-stats b{color:var(--ink)}
+  .vocab-tools{display:flex; gap:8px; margin-bottom:6px; flex-wrap:wrap}
+  .vocab-search{
+    flex:2 1 150px; min-width:0; font:inherit; font-size:13px; padding:7px 10px;
+    border:1px solid var(--border); border-radius:9px; background:var(--bg); color:var(--ink);
+  }
+  .vocab-tools .prefsel{flex:1 1 120px; min-width:0}
   .vocab-item .vdel{border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:16px}
   .vocab-item .vdel:hover{color:#c0392b}
   .vocab-item .vwhen{font-size:11px; color:var(--muted); white-space:nowrap}
 
   /* Review */
-  .rev-head{display:flex; align-items:center; gap:12px; margin-bottom:16px}
-  .rev-head .pageinfo{margin-left:auto; color:var(--muted); font-size:13px}
+  .rev-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .rev-sub{margin:4px 0 14px; min-height:16px}
+  .rev-sub .pageinfo{color:var(--muted); font-size:13px}
   .rev-card{
-    text-align:center; padding:30px 16px; border:1px solid var(--border); border-radius:14px;
-    background:var(--bg); margin-bottom:14px;
+    text-align:center; padding:26px 16px; border:1px solid var(--border); border-radius:14px;
+    background:var(--bg); margin-bottom:12px;
+  }
+  /* what the card is asking for: the exercises are only fair if you know which
+     one you are being given */
+  .rev-kind{
+    font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted);
+    margin-bottom:12px;
   }
   .rev-term{
     font-family:var(--reader-font); font-size:26px; font-weight:700; color:var(--accent);
@@ -154,6 +184,36 @@
   .rev-trans{font-size:18px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border)}
   .rev-row{display:flex; gap:8px}
   .rev-row button{white-space:nowrap; font-size:13px; padding:9px 6px}
+  .rev-row + .rev-row{margin-top:8px}
+  /* the sentence the word was met in, gapped while asking and whole after */
+  .rev-ctx{
+    font-family:var(--reader-font); font-size:15px; line-height:1.6; color:var(--ink);
+    margin-top:14px; text-align:left;
+  }
+  .rev-ctx .gap{color:var(--accent); letter-spacing:2px}
+  .rev-ctx mark{background:var(--accent-soft); color:inherit; border-radius:3px; font-weight:700}
+  .rev-extra{margin-top:10px; font-size:13px; color:var(--muted); line-height:1.5}
+  .rev-extra .rev-mean{color:var(--ink); font-size:14px}
+  .rev-extra .rev-def{font-style:italic; margin-top:4px}
+  .rev-src{
+    margin-top:14px; font-size:13px; border:none; background:transparent;
+    color:var(--accent); text-decoration:underline; padding:4px;
+  }
+  .revin{
+    flex:1; min-width:0; font:inherit; font-size:16px; padding:9px 12px; border-radius:9px;
+    border:1px solid var(--border); background:var(--bg); color:var(--ink);
+  }
+  .revin:focus{outline:2px solid var(--accent); outline-offset:1px}
+  .rev-choices{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .revchoice{padding:12px 10px; font-size:14px; text-align:center}
+  .revchoice:disabled{cursor:default; opacity:.75}
+  .revchoice.ok{border-color:#2e7d32; color:#2e7d32; opacity:1; font-weight:700}
+  .revchoice.no{border-color:#c0392b; color:#c0392b; opacity:1}
+  .rev-verdict{font-size:14px; margin-bottom:10px; text-align:center; font-weight:600}
+  .rev-verdict.ok{color:#2e7d32}
+  .rev-verdict.no{color:#c0392b}
+  .rev-tally{display:block; margin-top:8px; font-size:13px}
+  @media (max-width:420px){ .rev-choices{grid-template-columns:1fr} }
   textarea{
     width:100%; min-height:200px; font:inherit; padding:12px; border-radius:10px;
     border:1px solid var(--border); background:var(--bg); color:var(--ink); resize:vertical;
@@ -178,7 +238,7 @@
   #readerTitle{margin:0 0 4px}
   .modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:14px}
   .vocab-actions{display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap}
-  .rev-head h2{margin:0}
+  .rev-head h2{margin:0 auto 0 0}
   .vocab-item .spk{border:none; background:none; cursor:pointer; font-size:16px; padding:2px 5px}
   .vocab-item .spk:hover{color:var(--accent)}
   .gtm-noscript{display:none; visibility:hidden}
@@ -199,6 +259,12 @@
   .install-steps b{color:var(--accent)}
 
   /* Reader typography, adjustable from the settings panel */
+  .prefsel{
+    font:inherit; font-size:13px; color:var(--ink); background:var(--panel);
+    border:1px solid var(--border); border-radius:9px; padding:6px 10px; cursor:pointer;
+  }
+  .prefsel:hover{border-color:var(--accent)}
+  .prefsel.wide{width:100%; margin-bottom:4px}
   .seg.wide{width:100%; margin-bottom:6px}
   .seg.wide button{flex:1}
   .searchcount{color:var(--muted); font-size:13px; margin:10px 0 6px; min-height:18px}

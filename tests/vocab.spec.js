@@ -45,22 +45,31 @@ test('a review session runs through every due card', async ({ page }) => {
   await expect(page.locator('#revTrans')).toBeVisible();
   await expect(page.locator('#revGradeRow')).toBeVisible();
 
+  // "Fácil" is the one grade that graduates a new card outright; "Bien" would
+  // put it back in the session for its second learning step.
   for (let i = 0; i < 3; i++) {
-    await page.locator('#revGradeRow button', { hasText: 'Bien' }).click();
+    await page.locator('#revGradeRow button', { hasText: 'Fácil' }).click();
     if (i < 2) await page.locator('#revShowRow button').click();
   }
   await expect(page.locator('#revDone')).toBeVisible();
   await expect(page.locator('#dueBadge')).toBeHidden();
 });
 
-test('SM-2 schedules a new card at 1 day for good and 3 for easy', async ({ page }) => {
+test('a new card is answered twice in the session before it is scheduled', async ({ page }) => {
   await seed(page, [{ term: 'w', trans: 't', due: TODAY() }]);
-  await gradeOnce(page, 1);
-  expect(await card(page)).toMatchObject({ interval: 1, reps: 1, due: PLUS(1) });
+  await page.evaluate(() => { openReview(); revealCard(); gradeCard(1); });
+  // still learning: back in the queue for today, not put off until tomorrow
+  expect(await card(page)).toMatchObject({ step: 1, reps: 0, interval: 0, due: TODAY() });
+  await expect(page.locator('#revProgress')).toHaveText('1 por repasar');
 
+  await page.evaluate(() => { revealCard(); gradeCard(1); closeReview(); });
+  expect(await card(page)).toMatchObject({ interval: 1, reps: 1, due: PLUS(1) });
+});
+
+test('"easy" graduates a new card on the spot, at 3 days', async ({ page }) => {
   await seed(page, [{ term: 'w', trans: 't', due: TODAY() }]);
   await gradeOnce(page, 2);
-  expect(await card(page)).toMatchObject({ interval: 3, due: PLUS(3) });
+  expect(await card(page)).toMatchObject({ interval: 3, reps: 1, due: PLUS(3) });
 });
 
 test('SM-2 grows a mature card by its ease factor', async ({ page }) => {
@@ -72,7 +81,21 @@ test('SM-2 grows a mature card by its ease factor', async ({ page }) => {
 test('a failed card comes back today, with a lower ease', async ({ page }) => {
   await seed(page, [{ term: 'w', trans: 't', due: TODAY(), reps: 5, interval: 40, ease: 2.5 }]);
   await gradeOnce(page, 0);
-  expect(await card(page)).toMatchObject({ interval: 0, reps: 0, due: TODAY(), ease: 2.3 });
+  expect(await card(page)).toMatchObject({ interval: 0, reps: 0, due: TODAY(), ease: 2.3, lapses: 1 });
+});
+
+test('a word failed over and over is set aside, and can be brought back', async ({ page }) => {
+  await seed(page, [{ term: 'stubborn', trans: 'terco', due: TODAY(), reps: 1, lapses: 7 }]);
+  await gradeOnce(page, 0);
+  expect(await card(page)).toMatchObject({ lapses: 8, leech: true });
+  await expect(page.locator('#dueBadge')).toBeHidden();          // suspended, so not due
+
+  await page.evaluate(() => openVocab());
+  await expect(page.locator('.vocab-item .vwhen')).toContainText('en pausa');
+  await expect(page.locator('.vocab-item .vfails')).toHaveText('8 fallos');
+  await page.locator('.vocab-item [data-act="wake"]').click();
+  expect(await card(page)).toMatchObject({ leech: false, lapses: 0, due: TODAY() });
+  await expect(page.locator('#dueBadge')).toHaveText('1');
 });
 
 test('the ease factor stays within its bounds', async ({ page }) => {
@@ -95,8 +118,8 @@ test('the keyboard drives a review', async ({ page }) => {
   await page.evaluate(() => openReview());
   await page.keyboard.press('Space');
   await expect(page.locator('#revTrans')).toBeVisible();
-  await page.keyboard.press('2');
-  expect((await card(page)).interval).toBe(1);
+  await page.keyboard.press('3');
+  expect((await card(page)).interval).toBe(3);
   await page.keyboard.press('Escape');
   await expect(page.locator('#reviewModal')).toBeHidden();
 });
@@ -136,6 +159,6 @@ test('the CSV export carries every saved word', async ({ page }) => {
     window.downloadBlob = real;
     return out.text();
   });
-  expect(csv).toContain('term,translation,date');
-  expect(csv).toContain('"dawn","amanecer, alba","2026-01-01"');
+  expect(csv).toContain('term,lemma,translation,context,added,due,interval,lapses');
+  expect(csv).toContain('"dawn","","amanecer, alba","","2026-01-01"');
 });

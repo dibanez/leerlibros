@@ -21,7 +21,16 @@ Es una **PWA instalable**: puedes añadirla a la pantalla de inicio de tu móvil
   - 🔁 Si tocas una palabra conjugada (`running`, `went`, `children`), la busca por su forma base y te dice cuál ha encontrado
 - **Ayuda con frases** — selecciona varias palabras y traduce la frase completa.
 - **Índice de capítulos** — el desplegable de navegación muestra los títulos reales del libro (leídos del índice del EPUB), no «Sección 7 de 41». Salta a cualquier capítulo de un toque.
-- **Vocabulario con repaso** — guarda palabras y frases con ⭐; las guardadas quedan subrayadas mientras lees. Repásalas **en los dos sentidos** (inglés→español o español→inglés, con el botón 🇬🇧→🇪🇸) con **tarjetas y repetición espaciada** (algoritmo SM-2 simplificado): cada palabra vuelve a aparecer justo antes de que la olvides. El contador junto a ⭐ te dice cuántas tocan hoy. Exportables a CSV.
+- **Vocabulario con contexto** — guarda palabras y frases con ⭐ y se guarda con ellas **todo lo que tenías en pantalla**: la transcripción fonética, la definición, la grabación y **la frase del libro donde la encontraste**. Si tocaste una forma conjugada (`went`), se archiva bajo su forma base (`go`), así que `gone` y `going` no se convierten en tres tarjetas distintas. Las guardadas quedan subrayadas mientras lees, y **las que tocan hoy se resaltan** para que te las vuelvas a encontrar en una frase de verdad.
+- **Práctica de verdad, no solo tarjetas** — el repaso se endurece a medida que la palabra se te afianza:
+  - 🔢 **Test** con opciones sacadas de tu propio vocabulario, para el primer encuentro.
+  - ⌨️ **Escribir** la palabra en inglés: producirla, no solo reconocerla. Se corrige sola, ignorando tildes y mayúsculas, y perdonando una letra cambiada de sitio.
+  - ␣ **Hueco**: completar la frase del libro con la palabra que falta.
+  - 👂 **Dictado**: la oyes y la escribes.
+  - 🔁 **Tarjeta** clásica, **en los dos sentidos** (🇬🇧→🇪🇸).
+  Puedes fijar un tipo concreto desde ⚙️ Ajustes o desde el propio repaso. Desde cualquier tarjeta, **📖 Ver en el libro** te lleva a la página donde la encontraste.
+- **Repetición espaciada que se sostiene** — SM-2 simplificado con **fase de aprendizaje** (una palabra nueva se ve dos veces en la misma sesión antes de programarse a días), **límite de palabras nuevas al día** y **tope por sesión**: guardar cincuenta palabras en un capítulo no te deja cincuenta tarjetas a la mañana siguiente. Una palabra que fallas una y otra vez se pone **en pausa** en lugar de repetirse eternamente, y puedes reactivarla cuando quieras.
+- **Saber que estás avanzando** — racha de días seguidos, palabras guardadas, pendientes de hoy y aprendidas. Y la lista se puede **buscar, filtrar** (pendientes, sin repasar, aprendiendo, aprendidas, las que se te resisten, frases) **y ordenar**. Exportable a CSV con su contexto y su calendario.
 - **Comodidad de lectura** — temas claro ☀️ / sepia 📜 / oscuro 🌙, y en ⚙️ tamaño de texto, **tipografía** (serif / sans / alta legibilidad), **interlineado** y **ancho de columna**. Navegación con flechas ← →.
 - **Buscar dentro del libro** — 🔎 encuentra cualquier palabra o frase, te enseña en qué capítulo está y con qué contexto, y salta hasta ella resaltándola.
 - **Accesible con teclado** — selecciona una palabra o frase en el texto y pulsa **Intro** para consultarla. Los diálogos toman y devuelven el foco, y el resultado se anuncia a los lectores de pantalla.

@@ -253,7 +253,7 @@ test('the app keeps working when analytics.js is blocked', async ({ page }) => {
   expect(await page.evaluate(() => typeof window.llTrack)).toBe('undefined');
   // the actions that report must not throw
   await pasteBook(page, 'L', 'Some English text long enough to read.');
-  await page.evaluate(() => { DB.vocab = [{ term: 'dawn', trans: 'amanecer' }]; openReview(); revealCard(); gradeCard(1); closeReview(); });
+  await page.evaluate(() => { DB.vocab = [{ term: 'dawn', trans: 'amanecer' }]; openReview(); revealCard(); gradeCard(2); closeReview(); });
   await page.evaluate(() => { window.downloadBlob = () => {}; exportLibrary(); });
-  expect(await page.evaluate(() => DB.vocab[0].interval)).toBe(1);
+  expect(await page.evaluate(() => DB.vocab[0].interval)).toBe(3);
 });

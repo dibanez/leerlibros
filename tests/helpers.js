@@ -1,7 +1,10 @@
 const { expect } = require('@playwright/test');
 
-const TODAY = () => new Date().toISOString().slice(0, 10);
-const PLUS = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+// The reader's own day, the way the app counts it. Using UTC here would make
+// the suite pass or fail depending on what time of night it was run.
+const isoDay = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const TODAY = () => isoDay(new Date());
+const PLUS = n => { const d = new Date(); d.setDate(d.getDate() + n); return isoDay(d); };
 
 /**
  * Opens the app on a clean profile with every external call stubbed, so the

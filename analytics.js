@@ -15,7 +15,7 @@
   // Parameters left over from an earlier push would stick to the next event,
   // so they are cleared before every push.
   const PARAMS = ['method', 'format', 'book_title', 'direction', 'page_num',
-                  'word', 'theme', 'minutes', 'label'];
+                  'word', 'theme', 'minutes', 'label', 'mode'];
 
   function track(name, params) {
     // nothing is measured until the reader has accepted analytics cookies
