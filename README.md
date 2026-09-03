@@ -15,14 +15,15 @@ Es una **PWA instalable**: puedes añadirla a la pantalla de inicio de tu móvil
   - 📂 Subiendo archivos `.txt`
   - 📚 Subiendo archivos `.epub` (se extrae el texto y los nombres de los capítulos)
 - **Ayuda con palabras** — toca una palabra y obtienes:
-  - 🔤 Transcripción fonética + botón 🔊 para escuchar la pronunciación
+  - 🔤 Transcripción fonética + botón 🔊 con **grabación de voz humana** cuando el diccionario la tiene (si no, voz sintética)
   - 🇪🇸 Traducción al español
   - 📖 Definiciones y ejemplos en inglés
+  - 🔁 Si tocas una palabra conjugada (`running`, `went`, `children`), la busca por su forma base y te dice cuál ha encontrado
 - **Ayuda con frases** — selecciona varias palabras y traduce la frase completa.
 - **Índice de capítulos** — el desplegable de navegación muestra los títulos reales del libro (leídos del índice del EPUB), no «Sección 7 de 41». Salta a cualquier capítulo de un toque.
 - **Vocabulario con repaso** — guarda palabras y frases con ⭐; las guardadas quedan subrayadas mientras lees. Repásalas con **tarjetas y repetición espaciada** (algoritmo SM-2 simplificado): cada palabra vuelve a aparecer justo antes de que la olvides. El contador junto a ⭐ te dice cuántas tocan hoy. Exportables a CSV.
 - **Comodidad de lectura** — temas claro ☀️ / sepia 📜 / oscuro 🌙, tamaño de texto ajustable y navegación con flechas ← →.
-- **Memoria** — tu biblioteca, tu progreso y tu vocabulario se guardan en el navegador. Recuerda por dónde ibas en cada libro.
+- **Memoria** — tu biblioteca, tu progreso y tu vocabulario se guardan en el navegador. Recuerda por dónde ibas en cada libro, **incluso a media sección**: al volver, sigues justo donde lo dejaste.
 - **Copias de seguridad** — 💾 exporta biblioteca, vocabulario y preferencias a un archivo `.json`, y ♻️ restáuralo en otro dispositivo o después de borrar los datos del navegador. Al restaurar se **añade** a lo que ya tengas, nunca se sobrescribe.
 - **Funciona sin conexión** — la interfaz se cachea mediante un *service worker*, y **cada palabra consultada se guarda**: las que ya has mirado se abren al instante y siguen funcionando sin internet. Solo las palabras nuevas necesitan conexión.
 
@@ -72,7 +73,9 @@ Esta app está publicada en **[dibanez.github.io/leerlibros](https://dibanez.git
 | Pronunciación 🔊 | Web Speech API del navegador |
 | Estadísticas de uso | [Google Tag Manager](https://tagmanager.google.com) (`GTM-5ZB7JTBC`), con Google Analytics 4 configurado dentro |
 
-> ⚠️ La traducción gratuita de MyMemory tiene un límite diario generoso pero no infinito. Si algún día deja de traducir, suele ser por la cuota.
+> ⚠️ La traducción gratuita de MyMemory tiene un límite diario generoso pero no infinito. Cuando se agota, la app te lo dice con claridad en vez de fallar en silencio.
+>
+> Puedes ampliar bastante ese límite rellenando la constante `MYMEMORY_EMAIL` en `index.html` con tu correo. Está vacía a propósito: al ser un repositorio público, esa dirección quedaría a la vista de cualquiera.
 
 ---
 
@@ -82,11 +85,15 @@ Esta app está publicada en **[dibanez.github.io/leerlibros](https://dibanez.git
 index.html              · La aplicación completa (UI + lógica)
 manifest.webmanifest    · Metadatos de la PWA
 sw.js                   · Service worker (cache offline)
+sitemap.xml             · Sitemap para buscadores
+robots.txt              · Solo útil si algún día sirves la app desde la raíz de un dominio
 icon-192.png            · Iconos de la app
 icon-512.png
 icon-maskable-512.png
 apple-touch-icon.png
 favicon.png
+screenshot-narrow.png   · Capturas para la ficha de instalación
+screenshot-wide.png
 ```
 
 ---

@@ -295,7 +295,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <select class="chapsel" id="chapSel" title="Ir a una sección"></select>
       <button onclick="nextChapter()" id="nextBtn">Siguiente →</button>
     </div>
-    <div id="readerText" class="reader-text"></div>
+    <div id="readerText" class="reader-text" lang="en"></div>
     <div class="chapnav">
       <button onclick="prevChapter()">← Anterior</button>
       <select class="chapsel" id="chapSel2" title="Ir a una sección"></select>
@@ -347,7 +347,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <button onclick="closeReview()">Cerrar</button>
     </div>
     <div id="revCard" class="rev-card">
-      <div class="rev-term" id="revTerm"></div>
+      <div class="rev-term" id="revTerm" lang="en"></div>
       <button class="spk" id="revSpk" title="Pronunciar">🔊</button>
       <div class="rev-trans hidden" id="revTrans"></div>
     </div>
@@ -546,7 +546,7 @@ function deleteBook(id){
 function saveBook(title, chapters, titles){
   const words = chapters.join(' ').split(/\s+/).filter(Boolean).length;
   const named = (titles && titles.length === chapters.length) ? titles : chapters.map(headingOf);
-  const book = { id:uid(), title:title||'Sin título', chapters, titles:named, pos:0, words, added:Date.now() };
+  const book = { id:uid(), title:title||'Sin título', chapters, titles:named, pos:0, scroll:0, words, added:Date.now() };
   booksCache.unshift(book);
   persistBook(book);
   renderLibrary();
@@ -736,8 +736,30 @@ function openBook(id){
   document.getElementById('readerTitle').textContent = current.title;
   renderChapterNav();
   renderChapter();
-  window.scrollTo(0,0);
+  restoreScroll();
 }
+
+// Sections run to ~3500 characters, so returning to the top of one loses the
+// reader's place. The position is kept as a fraction of the scrollable height,
+// which survives a change of font size or window width.
+function restoreScroll(){
+  const frac = (current && current.scroll) || 0;
+  requestAnimationFrame(()=>{
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    window.scrollTo(0, max > 0 ? Math.round(frac * max) : 0);
+  });
+}
+let scrollSaveT;
+window.addEventListener('scroll', ()=>{
+  if(!current || document.getElementById('reader').style.display !== 'block') return;
+  clearTimeout(scrollSaveT);
+  scrollSaveT = setTimeout(()=>{
+    if(!current) return;
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    current.scroll = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+    persistPos();
+  }, 400);
+}, { passive:true });
 function goLibrary(){
   hidePopup();
   if(typeof hideSelButton==='function') hideSelButton();
@@ -780,8 +802,7 @@ function renderChapterNav(){
 CHAP_SELECTS.forEach(id=>{
   document.getElementById(id).addEventListener('change', e=>{
     if(!current) return;
-    current.pos = Number(e.target.value) || 0;
-    persistPos(); renderChapter(); window.scrollTo(0,0);
+    goToChapter(Number(e.target.value) || 0);
   });
 });
 
@@ -795,8 +816,14 @@ function wrapWords(str, savedSet){
     return esc(tok);
   });
 }
-function prevChapter(){ if(current.pos>0){ current.pos--; persistPos(); renderChapter(); window.scrollTo(0,0); } }
-function nextChapter(){ if(current.pos<current.chapters.length-1){ current.pos++; persistPos(); renderChapter(); window.scrollTo(0,0); } }
+function goToChapter(pos){
+  if(!current || pos < 0 || pos > current.chapters.length-1) return;
+  current.pos = pos;
+  current.scroll = 0;          // a new section always starts at the top
+  persistPos(); renderChapter(); window.scrollTo(0,0);
+}
+function prevChapter(){ goToChapter((current.pos||0) - 1); }
+function nextChapter(){ goToChapter((current.pos||0) + 1); }
 function persistPos(){
   const b = booksCache.find(x=>x.id===current.id);
   if(b){ b.pos = current.pos; persistBook(b); }
@@ -807,13 +834,13 @@ const pop = document.getElementById('pop');
 
 // The popup never interpolates text into JS: its buttons read the current
 // lookup from popState, so quotes in a book or in an API reply are harmless.
-let popState = { term:'', trans:'' };
+let popState = { term:'', trans:'', audio:'' };
 let lookupSeq = 0; // discards replies from a lookup the reader already left
 
 pop.addEventListener('click', e=>{
   const btn = e.target.closest('[data-act]');
   if(!btn) return;
-  if(btn.dataset.act === 'speak') speak(popState.term);
+  if(btn.dataset.act === 'speak') pronounce(popState.audio, popState.term);
   else if(btn.dataset.act === 'save') saveVocab(popState.term, popState.trans);
 });
 
@@ -906,8 +933,49 @@ function showPopupAt(x, y){
 }
 function hidePopup(){ pop.style.display='none'; }
 
+// Browsers load the voice list asynchronously, so the very first tap used to
+// be silent. Wait for the voices once, then pick an English one explicitly.
+function englishVoice(){
+  const vs = speechSynthesis.getVoices() || [];
+  return vs.find(v=>/^en[-_]us/i.test(v.lang)) || vs.find(v=>/^en/i.test(v.lang)) || null;
+}
 function speak(text){
-  try{ const u=new SpeechSynthesisUtterance(text); u.lang='en-US'; speechSynthesis.cancel(); speechSynthesis.speak(u);}catch(e){}
+  if(!text) return;
+  try{
+    let spoken = false;
+    const say = ()=>{
+      if(spoken) return;
+      spoken = true;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      // Picking a voice is a nicety: never let it stop the word being said.
+      try{
+        const v = englishVoice();
+        if(v) u.voice = v;
+      }catch(err){ console.warn('Could not select a voice', err); }
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    };
+    if((speechSynthesis.getVoices()||[]).length) say();
+    else{
+      speechSynthesis.addEventListener('voiceschanged', say, { once:true });
+      setTimeout(say, 300);   // some browsers never fire the event
+    }
+  }catch(err){ console.warn('Speech synthesis unavailable', err); }
+}
+
+// The dictionary ships recordings by real speakers; the synthesizer is the
+// fallback when a word has none or the file will not play.
+let currentAudio = null;
+function pronounce(url, fallbackText){
+  if(!url) return speak(fallbackText);
+  try{
+    if(currentAudio){ currentAudio.pause(); currentAudio = null; }
+    speechSynthesis.cancel();
+    const audio = new Audio(url);
+    currentAudio = audio;
+    audio.play().catch(()=>speak(fallbackText));
+  }catch(err){ speak(fallbackText); }
 }
 
 async function lookupWord(word){
@@ -917,20 +985,22 @@ async function lookupWord(word){
   pop.innerHTML = `<div class="head"><span class="term">${esc(word)}</span></div><div class="loading">Buscando…</div>`;
   const [dict, tr] = await Promise.allSettled([ lookupDict(word), lookupTranslation(word) ]);
   if(turn !== lookupSeq) return;
-  let html = `<div class="head"><span class="term">${esc(word)}</span>`;
-  let phon='';
-  if(dict.status==='fulfilled' && dict.value){
-    phon = dict.value.phonetic||'';
-  }
-  if(phon) html += `<span class="phon">${esc(phon)}</span>`;
-  html += `<button class="spk" data-act="speak" title="Pronunciar">🔊</button></div>`;
+  const entry = dict.status==='fulfilled' ? dict.value : null;
+  popState.audio = (entry && entry.audio) || '';
+
+  let html = `<div class="head"><span class="term" lang="en">${esc(word)}</span>`;
+  if(entry && entry.phonetic) html += `<span class="phon">${esc(entry.phonetic)}</span>`;
+  // say which base form answered, so "running -> run" is not a surprise
+  if(entry && entry.matched) html += `<span class="phon">≈ ${esc(entry.matched)}</span>`;
+  const speakTitle = popState.audio ? 'Escuchar la pronunciación' : 'Pronunciar';
+  html += `<button class="spk" data-act="speak" title="${speakTitle}">🔊</button></div>`;
 
   const trText = tr.status==='fulfilled' ? tr.value : null;
   popState.trans = trText || '';
   if(trText) html += `<div class="trans">🇪🇸 ${esc(trText)}</div>`;
 
-  if(dict.status==='fulfilled' && dict.value && dict.value.meanings.length){
-    dict.value.meanings.slice(0,3).forEach(m=>{
+  if(entry && entry.meanings.length){
+    entry.meanings.slice(0,3).forEach(m=>{
       html += `<div class="pos">${esc(m.pos)}</div>`;
       m.defs.slice(0,2).forEach(d=>{
         html += `<div class="defn">• ${esc(d.def)}</div>`;
@@ -938,7 +1008,8 @@ async function lookupWord(word){
       });
     });
   } else if(!trText){
-    html += `<div class="err">No se encontró información para esta palabra.</div>`;
+    const failure = (tr.status==='rejected' && tr.reason) || (dict.status==='rejected' && dict.reason);
+    html += `<div class="err">${esc(errorMessage(failure))}</div>`;
   }
   html += `<div class="row">
     <button class="primary" data-act="save">⭐ Guardar</button>
@@ -949,16 +1020,18 @@ async function lookupWord(word){
 async function lookupPhrase(phrase){
   const turn = ++lookupSeq;
   popState = { term: phrase, trans: '' };
+  popState.audio = '';
   const head = `<div class="head"><span class="term">Frase</span>
     <button class="spk" data-act="speak" title="Pronunciar">🔊</button></div>
     <div class="ex">“${esc(phrase)}”</div>`;
   pop.innerHTML = head + `<div class="loading">Traduciendo…</div>`;
-  const tr = await lookupTranslation(phrase).catch(()=>null);
+  let tr = null, failure = null;
+  try{ tr = await lookupTranslation(phrase); }catch(err){ failure = err; }
   if(turn !== lookupSeq) return;
   popState.trans = tr || '';
   let html = head;
   if(tr) html += `<div class="trans">🇪🇸 ${esc(tr)}</div>`;
-  else html += `<div class="err">No se pudo traducir la frase.</div>`;
+  else html += `<div class="err">${esc(failure ? errorMessage(failure) : 'No se pudo traducir la frase.')}</div>`;
   html += `<div class="row"><button class="primary" data-act="save">⭐ Guardar</button></div>`;
   pop.innerHTML = html;
 }
@@ -984,34 +1057,129 @@ async function cached(key, fetcher){
   if(data) cachePut(key, data);
   return data;
 }
-function lookupDict(word){ return cached('d:'+word.toLowerCase().trim(), ()=>fetchDict(word)); }
+// A word the dictionary genuinely does not know is worth remembering too, so
+// it is not looked up again on every tap. Transient failures throw instead.
+async function lookupDict(word){
+  const key = 'd:'+word.toLowerCase().trim();
+  const hit = await cacheGet(key);
+  if(hit) return hit.data;              // data may be null: a known non-word
+  const data = await fetchDict(word);
+  cachePut(key, data);
+  return data;
+}
 function lookupTranslation(text){ return cached('t:'+text.trim(), ()=>translate(text)); }
 
 /* ---- APIs (free, no key) ---- */
-async function fetchDict(word){
-  const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(word.toLowerCase()));
-  if(!r.ok) return null;
-  const data = await r.json();
-  if(!Array.isArray(data)) return null;
+// Filling this in raises MyMemory's daily allowance a long way. It is left
+// empty on purpose: the address would be public in this file.
+const MYMEMORY_EMAIL = '';
+
+function apiError(code, message){
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+function errorMessage(err){
+  if(err && err.code === 'quota') return 'Cuota diaria de traducción agotada. Inténtalo mañana.';
+  if(err && err.code === 'network') return 'Sin conexión. Solo funcionan las palabras ya consultadas.';
+  if(err && err.code === 'service') return 'El servicio no responde ahora mismo.';
+  return 'No se encontró información para esta palabra.';
+}
+
+// The dictionary only holds base forms. These are the regular ways an English
+// word gets inflected, plus the irregulars a reader actually trips over.
+const IRREGULARS = {
+  was:'be', were:'be', been:'be', had:'have', did:'do', done:'do',
+  went:'go', gone:'go', said:'say', got:'get', gotten:'get', made:'make',
+  knew:'know', known:'know', thought:'think', took:'take', taken:'take',
+  saw:'see', seen:'see', came:'come', found:'find', gave:'give', given:'give',
+  told:'tell', became:'become', left:'leave', felt:'feel', brought:'bring',
+  began:'begin', begun:'begin', kept:'keep', held:'hold', wrote:'write',
+  written:'write', stood:'stand', heard:'hear', meant:'mean', met:'meet',
+  ran:'run', paid:'pay', sat:'sit', spoke:'speak', spoken:'speak',
+  led:'lead', grew:'grow', grown:'grow', lost:'lose', fell:'fall',
+  fallen:'fall', sent:'send', built:'build', understood:'understand',
+  drew:'draw', broke:'break', broken:'break', spent:'spend', rose:'rise',
+  risen:'rise', drove:'drive', driven:'drive', bought:'buy', wore:'wear',
+  worn:'wear', chose:'choose', chosen:'choose', ate:'eat', eaten:'eat',
+  threw:'throw', thrown:'throw', caught:'catch', taught:'teach', sold:'sell',
+  fought:'fight', slept:'sleep', woke:'wake', woken:'wake', drank:'drink',
+  swam:'swim', sang:'sing', sung:'sing', rang:'ring', rung:'ring',
+  hung:'hang', shook:'shake', shaken:'shake', stole:'steal', stolen:'steal',
+  better:'good', best:'good', worse:'bad', worst:'bad',
+  men:'man', women:'woman', children:'child', feet:'foot', teeth:'tooth',
+  mice:'mouse', geese:'goose', people:'person'
+};
+
+function baseForms(word){
+  const w = word.toLowerCase();
+  const out = [];
+  const add = f=>{ if(f && f.length > 1 && f !== w && !out.includes(f)) out.push(f); };
+  add(IRREGULARS[w]);
+  // doubled consonant: stopped -> stop, running -> run
+  const dbl = w.match(/^(.*?)([bdfglmnprt])\2(ed|ing|er|est)$/);
+  if(dbl) add(dbl[1]+dbl[2]);
+  if(/ies$/.test(w)) add(w.slice(0,-3)+'y');
+  if(/(ses|xes|zes|ches|shes)$/.test(w)) add(w.slice(0,-2));
+  if(/s$/.test(w) && !/ss$/.test(w)) add(w.slice(0,-1));
+  if(/ied$/.test(w)) add(w.slice(0,-3)+'y');
+  if(/ed$/.test(w)){ add(w.slice(0,-2)); add(w.slice(0,-1)); }
+  if(/ing$/.test(w)){ add(w.slice(0,-3)); add(w.slice(0,-3)+'e'); }
+  if(/est$/.test(w)){ add(w.slice(0,-3)); add(w.slice(0,-2)); }
+  if(/er$/.test(w)){ add(w.slice(0,-2)); add(w.slice(0,-1)); }
+  return out.slice(0, 4);
+}
+
+// One request. null means the dictionary answered "no such word"; anything
+// transient throws, so a passing outage is never cached as a miss.
+async function fetchDictEntry(word){
+  let r;
+  try{ r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(word.toLowerCase())); }
+  catch(err){ throw apiError('network', 'Sin conexión'); }
+  if(r.status === 404) return null;
+  if(!r.ok) throw apiError('service', 'El diccionario no responde');
+  let data;
+  try{ data = await r.json(); }catch(err){ throw apiError('service', 'Respuesta ilegible'); }
+  if(!Array.isArray(data) || !data[0]) return null;
   const entry = data[0];
-  if(!entry) return null;
-  const phonetic = entry.phonetic || ((entry.phonetics||[]).find(p=>p.text)||{}).text || '';
+  const phonetics = entry.phonetics || [];
+  const phonetic = entry.phonetic || (phonetics.find(p=>p.text)||{}).text || '';
+  const audioRaw = (phonetics.find(p=>p.audio)||{}).audio || '';
+  const audio = audioRaw.startsWith('//') ? 'https:'+audioRaw : audioRaw;
   const meanings = (entry.meanings||[]).map(m=>({
     pos: m.partOfSpeech,
     defs: (m.definitions||[]).map(d=>({def:d.definition, ex:d.example}))
   }));
-  return { phonetic, meanings };
+  return { phonetic, audio, meanings };
 }
+
+async function fetchDict(word){
+  const direct = await fetchDictEntry(word);
+  if(direct) return direct;
+  for(const form of baseForms(word)){
+    const hit = await fetchDictEntry(form);
+    if(hit){ hit.matched = form; return hit; }
+  }
+  return null;
+}
+
 async function translate(text){
   // MyMemory free translation API (en -> es)
-  const r = await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair=en|es');
-  if(!r.ok) return null;
-  const d = await r.json();
-  const t = d.responseData && d.responseData.translatedText;
-  if(!t) return null;
-  // skip if API returns the same text or a quota warning
-  if(/MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(t)) return null;
-  return t;
+  let url = 'https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair=en|es';
+  if(MYMEMORY_EMAIL) url += '&de='+encodeURIComponent(MYMEMORY_EMAIL);
+  let r;
+  try{ r = await fetch(url); }
+  catch(err){ throw apiError('network', 'Sin conexión'); }
+  if(!r.ok) throw apiError(r.status === 429 ? 'quota' : 'service', 'El traductor no responde');
+  let d;
+  try{ d = await r.json(); }catch(err){ throw apiError('service', 'Respuesta ilegible'); }
+  const t = (d.responseData && d.responseData.translatedText) || '';
+  const notice = t + ' ' + (d.responseDetails || '');
+  // A quota message must never be cached as if it were a translation.
+  if(/MYMEMORY WARNING|QUERY LENGTH LIMIT|TOO MANY REQUESTS|DAILY LIMIT/i.test(notice)){
+    throw apiError('quota', 'Cuota agotada');
+  }
+  return t || null;
 }
 
 /* ============ VOCAB ============ */
@@ -1056,7 +1224,7 @@ function openVocab(){
   document.getElementById('revCount').textContent = due ? ' ('+due+')' : '';
   list.innerHTML = vocab.map((v,i)=>`
     <div class="vocab-item">
-      <span class="vt">${esc(v.term)}</span>
+      <span class="vt" lang="en">${esc(v.term)}</span>
       <span class="vd">${esc(v.trans||'—')}</span>
       <span class="vwhen" title="Próximo repaso">${esc(dueLabel(v))}</span>
       <button class="spk" data-act="speak" data-i="${i}" title="Pronunciar" style="border:none;background:none;cursor:pointer">🔊</button>
@@ -1189,6 +1357,7 @@ function cleanBook(b){
     title: (typeof b.title === 'string' && b.title.trim()) ? b.title.trim() : 'Sin título',
     chapters,
     pos: Number.isInteger(b.pos) ? Math.min(Math.max(b.pos, 0), chapters.length-1) : 0,
+    scroll: Number.isFinite(b.scroll) ? Math.min(1, Math.max(0, b.scroll)) : 0,
     words: Number.isFinite(b.words) ? b.words : chapters.join(' ').split(/\s+/).filter(Boolean).length,
     added: Number.isFinite(b.added) ? b.added : Date.now()
   };

@@ -1,5 +1,5 @@
 /* LeerLibros service worker — app-shell offline cache */
-const CACHE = 'leerlibros-v8';
+const CACHE = 'leerlibros-v10';
 const HTML_TIMEOUT = 3000; // on lie-fi, fall back to cache instead of hanging
 const ASSETS = [
   './',
@@ -14,8 +14,13 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
+  // 'reload' bypasses the browser's HTTP cache: without it a stale copy can be
+  // baked into a fresh CACHE version, so bumping the version would change
+  // nothing. Precaching must always come from the network.
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
   );
 });
 
