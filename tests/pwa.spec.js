@@ -116,7 +116,10 @@ test('the app still opens with the network gone', async ({ page, context }) => {
   await openApp(page);
   await page.evaluate(() => navigator.serviceWorker.register('sw.js'));
   await page.evaluate(() => navigator.serviceWorker.ready);
-  await expect.poll(() => page.evaluate(() => caches.open('leerlibros-v11').then(c => c.keys()).then(k => k.length))).toBeGreaterThan(5);
+  await expect.poll(() => page.evaluate(() => caches.keys()
+    .then(ks => ks.length ? caches.open(ks[0]) : null)
+    .then(c => c ? c.keys() : [])
+    .then(k => k.length))).toBeGreaterThan(5);
 
   await context.setOffline(true);
   await page.reload();

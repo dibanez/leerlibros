@@ -1,11 +1,12 @@
 /* LeerLibros service worker — app-shell offline cache */
-const CACHE = 'leerlibros-v11';
+const CACHE = 'leerlibros-v12';
 const HTML_TIMEOUT = 3000; // on lie-fi, fall back to cache instead of hanging
 const ASSETS = [
   './',
   './index.html',
   './app.css',
   './app.js',
+  './analytics.js',
   './gtm.js',
   './vendor/jszip.min.js',
   './manifest.webmanifest',

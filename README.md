@@ -86,6 +86,7 @@ index.html              · Estructura de la página
 app.css                 · Todos los estilos
 app.js                  · Toda la lógica
 gtm.js                  · Arranque de Google Tag Manager
+analytics.js            · Eventos de uso hacia el dataLayer
 sw.js                   · Service worker (cache offline)
 vendor/jszip.min.js     · JSZip 3.10.1, servido desde el propio sitio
 manifest.webmanifest    · Metadatos de la PWA
@@ -136,14 +137,18 @@ incrustado. Los botones se manejan con `data-action` y un único listener.
 
 ## 🔒 Privacidad
 
-Tus libros, tu progreso y tu vocabulario se guardan **solo en tu navegador** — los libros en IndexedDB (sin el límite de ~5 MB de `localStorage`) y el resto en `localStorage`. No hay servidor propio ni cuentas: el texto de tus libros no sale nunca de tu dispositivo.
+Tus libros, tu progreso y tu vocabulario se guardan **solo en tu navegador** — los libros en IndexedDB (sin el límite de ~5 MB de `localStorage`) y el resto en `localStorage`. No hay servidor propio ni cuentas: **el contenido de tus libros no se sube a ninguna parte**.
 
 > 💡 Como todo vive en el navegador, borrar los datos del sitio se lo lleva todo. Usa **💾 Copia** de vez en cuando.
 
 Peticiones externas que sí se hacen:
 
 - Las consultas de **definición y traducción** de las palabras y frases que tocas.
-- **Google Tag Manager** (`GTM-5ZB7JTBC`), que carga Google Analytics 4 para medir visitas de forma agregada. No se le envía ni el contenido de tus libros ni tu vocabulario. Un bloqueador de rastreadores lo desactiva sin afectar al resto de la app.
+- **Google Tag Manager** (`GTM-5ZB7JTBC`), que carga Google Analytics 4. Además de las visitas, `analytics.js` mide cómo se usa la app: temas, tamaño de letra, cambios de sección, tiempo de lectura, altas y bajas de libros, y acciones de vocabulario.
+
+  Ten en cuenta qué viaja en esos eventos: **el título de cada libro** (o el nombre del archivo que subes), **cada palabra que consultas**, y **hasta 90 caracteres de la frase que seleccionas** para traducir. Son fragmentos, no el libro entero, pero salen de tu dispositivo. Si prefieres que no, borra los parámetros `word`, `label` y `book_title` de `analytics.js`, o quita el `<script src="analytics.js">` de `index.html`.
+
+  Un bloqueador de rastreadores desactiva todo esto sin afectar al resto de la app.
 
 ---
 
