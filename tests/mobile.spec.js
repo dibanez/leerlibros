@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { openApp, TODAY } = require('./helpers');
+const { openApp, pasteBook, TODAY } = require('./helpers');
 
 // The vocabulary and the review are what a reader opens on a phone, standing
 // up, one-handed. These check the things that only go wrong at that size.
@@ -88,6 +88,69 @@ test.describe('the sheets take the whole screen', () => {
         .map(([t]) => t));
     expect(small).toEqual([]);
   });
+});
+
+test.describe('the top bar', () => {
+  test('is one row, and the last button is inside it', async ({ page }) => {
+    await openApp(page);
+    await pasteBook(page, 'Alice', 'Alice was beginning to get very tired of sitting by her sister.');
+    await page.evaluate(() => { showInstallButton(true); DB.vocab = []; updateDueBadge(); });
+    await seed(page, [word({})]);
+
+    expect(await page.evaluate(() => {
+      const bar = document.querySelector('.topbar');
+      const kids = [...bar.children].filter(e => e.offsetParent !== null);
+      const box = bar.getBoundingClientRect();
+      return {
+        // one row: everything is centred on the same line
+        rows: new Set(kids.map(e => {
+          const r = e.getBoundingClientRect();
+          return Math.round(r.top + r.height / 2);
+        })).size,
+        overflows: kids.some(e => e.getBoundingClientRect().right > box.right + 1),
+        pageScrollsSideways: document.documentElement.scrollWidth > window.innerWidth
+      };
+    })).toEqual({ rows: 1, overflows: false, pageScrollsSideways: false });
+  });
+
+  test('drops the reading choices, and ⚙️ Ajustes has them instead', async ({ page }) => {
+    await openApp(page);
+    await pasteBook(page, 'Alice', 'Alice was beginning to get very tired.');
+    // the theme picker and A−/A+ are not worth a whole row on a phone
+    await expect(page.locator('#th-dark')).toBeHidden();
+    await expect(page.locator('#readerControls [data-action="font"]').first()).toBeHidden();
+
+    await page.locator('.topbar [data-action="openReading"]').click();
+    await page.locator('#readingModal [data-action="theme"][data-arg="dark"]').click();
+    await expect(page.locator('body')).toHaveAttribute('data-theme', 'dark');
+    // the copy in the bar is hidden here, but it still has to agree
+    await expect(page.locator('#th-dark')).toHaveClass(/on/);
+
+    await page.locator('#readingModal [data-action="font"][data-arg="1"]').click();
+    await expect(page.locator('#prefFsVal')).toHaveText('22 px');
+    expect(await page.evaluate(() => DB.prefs.fs)).toBe(22);
+  });
+});
+
+// A flex column hands its children a definite height, so tall content gets
+// squashed instead of scrolling unless every child refuses to shrink.
+test.describe('a sheet scrolls instead of squashing', () => {
+  test.use({ viewport: { width: 393, height: 480 } });
+
+  test('the settings panel keeps its controls full size on a short screen',
+    async ({ page }) => {
+      await openApp(page);
+      await page.locator('.topbar [data-action="openReading"]').click();
+      expect(await page.evaluate(() => {
+        const body = document.querySelector('#readingModal .sheet-body');
+        return {
+          scrolls: body.scrollHeight > body.clientHeight + 1,
+          squashed: [...document.querySelectorAll('#readingModal button, #readingModal select')]
+            .filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height < 30; })
+            .map(el => el.textContent.trim().slice(0, 12))
+        };
+      })).toEqual({ scrolls: true, squashed: [] });
+    });
 });
 
 test.describe('swiping the card', () => {

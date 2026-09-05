@@ -69,21 +69,21 @@
 </head>
 <body data-theme="light">
 <header class="topbar">
-  <h1 data-action="goLibrary" role="button" tabindex="0" aria-label="Volver a la biblioteca">📖 Leer<span>Libros</span></h1>
+  <h1 data-action="goLibrary" role="button" tabindex="0" aria-label="Volver a la biblioteca"><span class="mark">📖</span><span class="name">Leer<span>Libros</span></span></h1>
   <div class="grow"></div>
   <div id="readerControls" class="readerctl hidden">
     <button class="iconbtn" title="Buscar en el libro" aria-label="Buscar en el libro" data-action="openSearch">🔎</button>
-    <button class="iconbtn" title="Reducir texto" aria-label="Reducir el texto" data-action="font" data-arg="-1">A−</button>
-    <button class="iconbtn" title="Aumentar texto" aria-label="Aumentar el texto" data-action="font" data-arg="1">A+</button>
-    <button class="iconbtn" title="Ajustes de lectura" aria-label="Ajustes de lectura" data-action="openReading">⚙️</button>
+    <button class="iconbtn wide-only" title="Reducir texto" aria-label="Reducir el texto" data-action="font" data-arg="-1">A−</button>
+    <button class="iconbtn wide-only" title="Aumentar texto" aria-label="Aumentar el texto" data-action="font" data-arg="1">A+</button>
   </div>
-  <div class="seg" role="group" aria-label="Tema de lectura">
+  <div class="seg wide-only" role="group" aria-label="Tema de lectura">
     <button data-action="theme" data-arg="light" id="th-light" title="Claro" aria-label="Tema claro">☀️</button>
     <button data-action="theme" data-arg="sepia" id="th-sepia" title="Sepia" aria-label="Tema sepia">📜</button>
     <button data-action="theme" data-arg="dark" id="th-dark" title="Oscuro" aria-label="Tema oscuro">🌙</button>
   </div>
-  <button data-action="openVocab">⭐ Vocabulario<span id="dueBadge" class="badge hidden"></span></button>
-  <button id="installBtn" class="primary hidden" data-action="doInstall">⬇️ Instalar</button>
+  <button data-action="openVocab" aria-label="Mi vocabulario">⭐<span class="lbl"> Vocabulario</span><span id="dueBadge" class="badge hidden"></span></button>
+  <button class="iconbtn" title="Ajustes" aria-label="Ajustes" data-action="openReading">⚙️</button>
+  <button id="installBtn" class="primary hidden" data-action="doInstall" aria-label="Instalar la app">⬇️<span class="lbl"> Instalar</span></button>
 </header>
 
 <main>
@@ -199,23 +199,46 @@
 
 <!-- Search modal -->
 <div id="searchModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
-  <div class="modal">
-    <h2 id="searchTitle">🔎 Buscar en el libro</h2>
-    <input id="searchInput" class="titlein" type="search" placeholder="Palabra o frase…" aria-label="Texto a buscar">
-    <div id="searchCount" class="searchcount"></div>
-    <div id="searchResults" class="searchresults"></div>
-    <div class="modal-actions">
-      <button data-action="closeModal" data-arg="searchModal">Cerrar</button>
+  <div class="modal sheet">
+    <div class="sheet-head">
+      <h2 id="searchTitle">🔎 Buscar en el libro</h2>
+      <button class="sheet-x" data-action="closeModal" data-arg="searchModal"
+              title="Cerrar" aria-label="Cerrar la búsqueda">✕</button>
+    </div>
+    <div class="sheet-tools">
+      <input id="searchInput" class="titlein" type="search" placeholder="Palabra o frase…" aria-label="Texto a buscar">
+      <div id="searchCount" class="searchcount"></div>
+    </div>
+    <div class="sheet-body">
+      <div id="searchResults" class="searchresults"></div>
     </div>
   </div>
 </div>
 
 <!-- Reading settings modal -->
 <div id="readingModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="readingTitle">
-  <div class="modal">
-    <h2 id="readingTitle">⚙️ Ajustes</h2>
-
+  <div class="modal sheet">
+    <div class="sheet-head">
+      <h2 id="readingTitle">⚙️ Ajustes</h2>
+      <button class="sheet-x" data-action="closeModal" data-arg="readingModal"
+              title="Cerrar" aria-label="Cerrar los ajustes">✕</button>
+    </div>
+    <div class="sheet-body">
     <h3 class="sect">Lectura</h3>
+
+    <label class="fld" id="prefThemeLbl">Tema</label>
+    <div class="seg wide" role="group" aria-labelledby="prefThemeLbl">
+      <button data-action="theme" data-arg="light">☀️ Claro</button>
+      <button data-action="theme" data-arg="sepia">📜 Sepia</button>
+      <button data-action="theme" data-arg="dark">🌙 Oscuro</button>
+    </div>
+
+    <label class="fld" id="prefFsLbl">Tamaño del texto</label>
+    <div class="fsrow" role="group" aria-labelledby="prefFsLbl">
+      <button data-action="font" data-arg="-1" aria-label="Reducir el texto">A−</button>
+      <span class="fsval" id="prefFsVal" role="status" aria-live="polite"></span>
+      <button data-action="font" data-arg="1" aria-label="Aumentar el texto">A+</button>
+    </div>
 
     <label class="fld" for="prefFont">Tipografía</label>
     <div class="seg wide" id="prefFont" role="group" aria-label="Tipografía">
@@ -286,8 +309,6 @@
       <button data-action="consent" data-arg="granted">Aceptar</button>
     </div>
 
-    <div class="modal-actions">
-      <button class="primary" data-action="closeModal" data-arg="readingModal">Listo</button>
     </div>
   </div>
 </div>

@@ -73,7 +73,7 @@ test('nothing inline is left, so the CSP can stay strict', async ({ page }) => {
 
 test('every button works through data-action, with no inline handler', async ({ page }) => {
   await openApp(page);
-  await page.locator('[data-action="theme"][data-arg="dark"]').click();
+  await page.locator('#th-dark').click();
   await expect(page.locator('body')).toHaveAttribute('data-theme', 'dark');
   await page.locator('[data-action="openPaste"]').click();
   await expect(page.locator('#pasteModal')).toBeVisible();

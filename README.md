@@ -29,10 +29,10 @@ Es una **PWA instalable**: puedes añadirla a la pantalla de inicio de tu móvil
   - 👂 **Dictado**: la oyes y la escribes.
   - 🔁 **Tarjeta** clásica, **en los dos sentidos** (🇬🇧→🇪🇸).
   Puedes fijar un tipo concreto desde ⚙️ Ajustes o desde el propio repaso. Desde cualquier tarjeta, **📖 Ver en el libro** te lleva a la página donde la encontraste.
-- **Pensado para el móvil** — el vocabulario y el repaso ocupan la pantalla entera: la cabecera y los botones que pulsas van fijos, así que **no cambian de sitio de una tarjeta a otra** y el teclado no los tapa. Con la respuesta a la vista, **deslizar la tarjeta** a la izquierda es «otra vez» y a la derecha «bien» (solo hacia lo que la tarjeta ofrece de verdad), con una vibración corta cuando la app corrige sola. Una barra fina dice cuánto queda de la sesión, y borrar una palabra por error **se deshace** desde el propio aviso.
+- **Pensado para el móvil** — la barra superior cabe en **una sola fila**: las preferencias de lectura viven en ⚙️ Ajustes en vez de ocupar dos filas de emojis, y queda lo que se toca leyendo. El vocabulario, el repaso, la búsqueda y los ajustes ocupan la pantalla entera: la cabecera y los botones que pulsas van fijos, así que **no cambian de sitio de una tarjeta a otra** y el teclado no los tapa. Con la respuesta a la vista, **deslizar la tarjeta** a la izquierda es «otra vez» y a la derecha «bien» (solo hacia lo que la tarjeta ofrece de verdad), con una vibración corta cuando la app corrige sola. Una barra fina dice cuánto queda de la sesión, y borrar una palabra por error **se deshace** desde el propio aviso.
 - **Repetición espaciada que se sostiene** — SM-2 simplificado con **fase de aprendizaje** (una palabra nueva se ve dos veces en la misma sesión antes de programarse a días), **límite de palabras nuevas al día** y **tope por sesión**: guardar cincuenta palabras en un capítulo no te deja cincuenta tarjetas a la mañana siguiente. Una palabra que fallas una y otra vez se pone **en pausa** en lugar de repetirse eternamente, y puedes reactivarla cuando quieras.
 - **Saber que estás avanzando** — racha de días seguidos, palabras guardadas, pendientes de hoy y aprendidas. Y la lista se puede **buscar, filtrar** (pendientes, sin repasar, aprendiendo, aprendidas, las que se te resisten, frases) **y ordenar**. Exportable a CSV con su contexto y su calendario.
-- **Comodidad de lectura** — temas claro ☀️ / sepia 📜 / oscuro 🌙, y en ⚙️ tamaño de texto, **tipografía** (serif / sans / alta legibilidad), **interlineado** y **ancho de columna**. Navegación con flechas ← →.
+- **Comodidad de lectura** — en ⚙️ Ajustes: temas claro ☀️ / sepia 📜 / oscuro 🌙, tamaño de texto, **tipografía** (serif / sans / alta legibilidad), **interlineado** y **ancho de columna**. En pantalla ancha el tema y el tamaño están además en la barra superior, a un clic. Navegación con flechas ← →.
 - **Buscar dentro del libro** — 🔎 encuentra cualquier palabra o frase, te enseña en qué capítulo está y con qué contexto, y salta hasta ella resaltándola.
 - **Accesible con teclado** — selecciona una palabra o frase en el texto y pulsa **Intro** para consultarla. Los diálogos toman y devuelven el foco, y el resultado se anuncia a los lectores de pantalla.
 - **Memoria** — tu biblioteca, tu progreso y tu vocabulario se guardan en el navegador. Recuerda por dónde ibas en cada libro, **incluso a media sección**: al volver, sigues justo donde lo dejaste.
@@ -125,7 +125,7 @@ No hay ningún paso de compilación: los ficheros que ves son los que se sirven.
 ```bash
 npm install                     # solo la primera vez
 npx playwright install chromium # solo la primera vez
-npm test                        # 142 tests en ~16 s
+npm test                        # 145 tests en ~16 s
 npm run test:ui                 # modo interactivo
 npm run serve                   # sirve la app en localhost:8000
 ```

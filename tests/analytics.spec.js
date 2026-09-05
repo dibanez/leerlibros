@@ -24,11 +24,11 @@ test('theme and font changes are tracked', async ({ page }) => {
   await page.locator('#th-dark').click();
   expect(await last(page)).toMatchObject({ ga_event: 'theme_change', theme: 'dark' });
 
-  // the font buttons only exist while a book is open
+  // the pair in the bar only exists while a book is open; ⚙️ Ajustes has its own
   await pasteBook(page, 'L', 'Some English text long enough to read.');
-  await page.locator('[data-action="font"][data-arg="1"]').click();
+  await page.locator('#readerControls [data-action="font"][data-arg="1"]').click();
   expect(await last(page)).toMatchObject({ ga_event: 'font_size', direction: 'up' });
-  await page.locator('[data-action="font"][data-arg="-1"]').click();
+  await page.locator('#readerControls [data-action="font"][data-arg="-1"]').click();
   expect(await last(page)).toMatchObject({ ga_event: 'font_size', direction: 'down' });
 });
 

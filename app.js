@@ -226,12 +226,23 @@ paintConsent();
 /* ============ THEME & FONT ============ */
 function setTheme(t){
   document.body.dataset.theme = t;
-  ['light','sepia','dark'].forEach(x=>document.getElementById('th-'+x).classList.toggle('on', x===t));
+  // the choice is offered twice -- in the top bar and in the settings panel,
+  // which is the only place it exists on a phone -- so both have to be painted
+  [...document.querySelectorAll('[data-action="theme"]')].forEach(b=>{
+    const active = b.dataset.arg === t;
+    b.classList.toggle('on', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
   const p = DB.prefs; p.theme = t; DB.prefs = p;
 }
 function changeFont(d){
   const p = DB.prefs; p.fs = Math.min(34, Math.max(14, (p.fs||20)+d*2)); DB.prefs = p;
   document.documentElement.style.setProperty('--fs', p.fs+'px');
+  paintFontSize(p.fs);
+}
+// A− and A+ say nothing about where you are between 14 and 34 px.
+function paintFontSize(fs){
+  document.getElementById('prefFsVal').textContent = fs + ' px';
 }
 
 // Long reading sessions live or die on these three.
@@ -246,6 +257,7 @@ function applyReading(p){
   root.setProperty('--lh', String(p.lh || 1.75));
   root.setProperty('--measure', (p.width || 820)+'px');
   root.setProperty('--reader-font', READER_FONTS[p.font] || READER_FONTS.serif);
+  paintFontSize(p.fs || 20);
   markReadingChoices(p);
 }
 function markReadingChoices(p){
@@ -770,6 +782,7 @@ function openSearch(){
   openModal('searchModal');
   const input = document.getElementById('searchInput');
   input.value = searchTerm;
+  input.focus();               // the sheet's ✕ comes first in the markup
   runSearch();
 }
 
