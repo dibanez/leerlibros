@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self'; img-src 'self' https://www.googletagmanager.com https://www.google-analytics.com; media-src 'self' https://api.dictionaryapi.dev https://ssl.gstatic.com; connect-src 'self' https://api.dictionaryapi.dev https://en.wiktionary.org https://api.mymemory.translated.net https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; font-src 'self'; manifest-src 'self'; worker-src 'self'">
 <title>LeerLibros · Lector de inglés con ayuda</title>
 <meta name="description" content="Lee libros en inglés y toca cualquier palabra para ver su pronunciación, traducción al español y definición. Gratis, sin registro y funciona sin conexión.">
@@ -155,38 +155,45 @@
 </div>
 
 <!-- Vocab modal -->
-<div id="vocabModal" class="modal-bg" role="dialog" aria-modal="true">
-  <div class="modal">
-    <h2>⭐ Mi vocabulario</h2>
-    <div class="vocab-actions">
+<div id="vocabModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="vocabTitle">
+  <div class="modal sheet">
+    <div class="sheet-head">
+      <h2 id="vocabTitle">⭐ Mi vocabulario</h2>
+      <button class="sheet-x" data-action="closeModal" data-arg="vocabModal"
+              title="Cerrar" aria-label="Cerrar el vocabulario">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div id="vocabStats" class="vocab-stats"></div>
+      <div class="vocab-tools" id="vocabTools">
+        <input id="vocabSearch" type="search" class="vocab-search" placeholder="Buscar palabra…"
+               aria-label="Buscar en el vocabulario">
+        <select id="vocabFilter" class="prefsel" aria-label="Filtrar el vocabulario">
+          <option value="all">Todas</option>
+          <option value="due">Para hoy</option>
+          <option value="new">Sin repasar</option>
+          <option value="learning">Aprendiendo</option>
+          <option value="known">Aprendidas</option>
+          <option value="hard">Se me resisten</option>
+          <option value="phrase">Frases</option>
+        </select>
+        <select id="vocabSort" class="prefsel" aria-label="Ordenar el vocabulario">
+          <option value="added">Más recientes</option>
+          <option value="alpha">A → Z</option>
+          <option value="due">Próximo repaso</option>
+          <option value="hard">Más falladas</option>
+        </select>
+      </div>
+      <div id="vocabList"></div>
+      <div id="vocabNone" class="empty hidden">Ninguna palabra coincide con este filtro.</div>
+      <div id="vocabEmpty" class="empty hidden">Aún no has guardado palabras. Toca una palabra mientras lees y pulsa “Guardar”.</div>
+      <div class="vocab-admin" id="vocabAdmin">
+        <button data-action="exportVocab">⬇️ Exportar CSV</button>
+        <button data-action="clearVocab">🗑 Vaciar</button>
+      </div>
+    </div>
+    <div class="sheet-foot" id="vocabFoot">
       <button class="primary grow" data-action="openReview">🎯 Repasar<span id="revCount"></span></button>
-      <button data-action="exportVocab">⬇️ CSV</button>
-      <button data-action="clearVocab">🗑 Vaciar</button>
-      <button data-action="closeModal" data-arg="vocabModal">Cerrar</button>
     </div>
-    <div id="vocabStats" class="vocab-stats"></div>
-    <div class="vocab-tools">
-      <input id="vocabSearch" type="search" class="vocab-search" placeholder="Buscar palabra…"
-             aria-label="Buscar en el vocabulario">
-      <select id="vocabFilter" class="prefsel" aria-label="Filtrar el vocabulario">
-        <option value="all">Todas</option>
-        <option value="due">Para hoy</option>
-        <option value="new">Sin repasar</option>
-        <option value="learning">Aprendiendo</option>
-        <option value="known">Aprendidas</option>
-        <option value="hard">Se me resisten</option>
-        <option value="phrase">Frases</option>
-      </select>
-      <select id="vocabSort" class="prefsel" aria-label="Ordenar el vocabulario">
-        <option value="added">Más recientes</option>
-        <option value="alpha">A → Z</option>
-        <option value="due">Próximo repaso</option>
-        <option value="hard">Más falladas</option>
-      </select>
-    </div>
-    <div id="vocabList"></div>
-    <div id="vocabNone" class="empty hidden">Ninguna palabra coincide con este filtro.</div>
-    <div id="vocabEmpty" class="empty hidden">Aún no has guardado palabras. Haz clic en una palabra mientras lees y pulsa “Guardar”.</div>
   </div>
 </div>
 
@@ -298,10 +305,14 @@
 </div>
 
 <!-- Review modal -->
-<div id="reviewModal" class="modal-bg" role="dialog" aria-modal="true">
-  <div class="modal">
-    <div class="rev-head">
-      <h2>🎯 Repaso</h2>
+<div id="reviewModal" class="modal-bg" role="dialog" aria-modal="true" aria-labelledby="revTitle">
+  <div class="modal sheet rev-sheet">
+    <div class="sheet-head rev-head">
+      <button class="sheet-x" data-action="closeReview" title="Cerrar"
+              aria-label="Cerrar el repaso">✕</button>
+      <h2 id="revTitle">🎯 Repaso</h2>
+      <button id="revDirBtn" class="iconbtn" data-action="reviewDirection"
+              title="Cambiar el sentido del repaso">🇬🇧→🇪🇸</button>
       <select id="revModeSel" class="prefsel" title="Tipo de ejercicio" aria-label="Tipo de ejercicio">
         <option value="mixed">🎲 Mixto</option>
         <option value="choice">🔢 Test</option>
@@ -310,36 +321,43 @@
         <option value="cloze">␣ Hueco</option>
         <option value="listen">👂 Dictado</option>
       </select>
-      <button id="revDirBtn" data-action="reviewDirection" title="Cambiar el sentido del repaso">🇬🇧→🇪🇸</button>
-      <button data-action="closeReview">Cerrar</button>
     </div>
-    <div class="rev-sub"><span class="pageinfo" id="revProgress"></span></div>
-    <div id="revCard" class="rev-card">
-      <div class="rev-kind" id="revKind"></div>
-      <div class="rev-term" id="revTerm" lang="en"></div>
-      <div class="rev-ctx hidden" id="revCtx" lang="en"></div>
-      <button class="spk" id="revSpk" title="Escuchar">🔊</button>
-      <div class="rev-trans hidden" id="revTrans"></div>
-      <div class="rev-extra hidden" id="revExtra"></div>
-      <button class="rev-src hidden" id="revSrc" data-action="goToSource">📖 Ver en el libro</button>
+    <div class="rev-bar" id="revBar" role="presentation"><i></i></div>
+    <div class="sheet-body rev-body">
+      <div id="revCard" class="rev-card">
+        <div class="rev-kind" id="revKind"></div>
+        <div class="rev-term" id="revTerm" lang="en"></div>
+        <div class="rev-ctx hidden" id="revCtx" lang="en"></div>
+        <button class="spk" id="revSpk" title="Escuchar" aria-label="Escuchar la palabra">🔊</button>
+        <div class="rev-trans hidden" id="revTrans"></div>
+        <div class="rev-extra hidden" id="revExtra"></div>
+        <button class="rev-src hidden" id="revSrc" data-action="goToSource">📖 Ver en el libro</button>
+      </div>
+      <div id="revDone" class="empty hidden">¡Repaso terminado! 🎉</div>
     </div>
-    <div id="revVerdict" class="rev-verdict hidden" role="status" aria-live="polite"></div>
-    <div id="revTypeRow" class="rev-row hidden">
-      <input id="revInput" class="revin" type="text" lang="en" autocomplete="off"
-             autocapitalize="off" autocorrect="off" spellcheck="false"
-             aria-label="Escribe la palabra en inglés">
-      <button class="primary" data-action="checkTyped">Comprobar</button>
+    <div class="sheet-foot">
+      <span class="pageinfo" id="revProgress"></span>
+      <div id="revVerdict" class="rev-verdict hidden" role="status" aria-live="polite"></div>
+      <div id="revTypeRow" class="rev-row hidden">
+        <input id="revInput" class="revin" type="text" lang="en" autocomplete="off"
+               autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done"
+               aria-label="Escribe la palabra en inglés">
+        <button class="primary" data-action="checkTyped">Comprobar</button>
+      </div>
+      <div id="revChoiceRow" class="rev-choices hidden"></div>
+      <div id="revShowRow" class="rev-row">
+        <button class="primary grow" data-action="revealCard">Mostrar traducción</button>
+      </div>
+      <div id="revGradeRow" class="rev-row hidden">
+        <button class="grow" data-action="grade" data-arg="0">😕 Otra vez</button>
+        <button class="grow" data-action="grade" data-arg="1">🙂 Bien</button>
+        <button class="grow" data-action="grade" data-arg="2">😎 Fácil</button>
+      </div>
+      <p class="rev-hint hidden" id="revHint">Desliza la tarjeta: ←&nbsp;otra vez · bien&nbsp;→</p>
+      <div id="revDoneRow" class="rev-row hidden">
+        <button class="primary grow" data-action="closeReview">Listo</button>
+      </div>
     </div>
-    <div id="revChoiceRow" class="rev-choices hidden"></div>
-    <div id="revShowRow" class="rev-row">
-      <button class="primary grow" data-action="revealCard">Mostrar traducción</button>
-    </div>
-    <div id="revGradeRow" class="rev-row hidden">
-      <button class="grow" data-action="grade" data-arg="0">😕 Otra vez</button>
-      <button class="grow" data-action="grade" data-arg="1">🙂 Bien</button>
-      <button class="grow" data-action="grade" data-arg="2">😎 Fácil</button>
-    </div>
-    <div id="revDone" class="empty hidden">¡Repaso terminado! 🎉</div>
   </div>
 </div>
 

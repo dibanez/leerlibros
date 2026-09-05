@@ -242,7 +242,7 @@ test('review and backup are measured', async ({ page }) => {
   expect(graded.label).toBe('easy');
   expect(graded.word).toBe(await tracksContent(page) ? 'dawn' : undefined);
 
-  await page.locator('[data-action="closeReview"]').click();
+  await page.locator('#reviewModal .sheet-x').click();
   await page.evaluate(() => { window.downloadBlob = () => {}; exportLibrary(); });
   expect(await last(page)).toMatchObject({ ga_event: 'library_backup', method: 'export' });
 });

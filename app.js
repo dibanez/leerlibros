@@ -288,10 +288,26 @@ function openReading(){
 
 /* ============ TOAST ============ */
 let toastT;
-function toast(msg){
+// `action` is {label, run}: an offer the reader can take, not just a notice.
+// It is built as a real element because the page runs with no inline scripts.
+function toast(msg, action){
   const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
-  clearTimeout(toastT); toastT = setTimeout(()=>el.classList.remove('show'), 1900);
+  el.textContent = msg;
+  el.classList.toggle('actionable', !!action);
+  if(action){
+    const btn = document.createElement('button');
+    btn.className = 'toast-do';
+    btn.textContent = action.label;
+    btn.addEventListener('click', ()=>{ el.classList.remove('show'); action.run(); });
+    el.appendChild(btn);
+  }
+  el.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(()=>el.classList.remove('show'), action ? 6000 : 1900);
+}
+// A phone answers a tap with a nudge. Silent, and a no-op where unsupported.
+function buzz(pattern){
+  try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(err){ /* never mind */ }
 }
 
 /* ============ LIBRARY ============ */
@@ -1554,14 +1570,28 @@ function renderVocab(){
 
   document.getElementById('vocabList').innerHTML = shown.map(v=>`
     <div class="vocab-item" data-state="${vocabState(v)}">
-      <span class="vt" lang="en">${esc(v.term)}${v.lemma ? `<i class="vlem">≈ ${esc(v.lemma)}</i>` : ''}</span>
-      <span class="vd">${esc(v.trans||'—')}${v.ctx ? `<i class="vctx">“${esc(v.ctx)}”</i>` : ''}</span>
-      <span class="vwhen" title="Próximo repaso">${esc(dueLabel(v))}${
-        (v.lapses || 0) >= 3 ? `<i class="vfails">${v.lapses} fallos</i>` : ''}</span>
-      <button class="spk" data-act="speak" data-term="${esc(v.term)}" title="Pronunciar">🔊</button>
-      ${v.leech ? `<button class="vwake" data-act="wake" data-term="${esc(v.term)}" title="En pausa: reactivar">🐌</button>` : ''}
-      <button class="vdel" data-act="del" data-term="${esc(v.term)}" title="Eliminar">✕</button>
+      <div class="vmain">
+        <div class="vhead">
+          <span class="vt" lang="en">${esc(v.term)}${v.lemma ? `<i class="vlem">≈ ${esc(v.lemma)}</i>` : ''}</span>
+          <span class="vwhen" title="Próximo repaso">${esc(dueLabel(v))}${
+            (v.lapses || 0) >= 3 ? `<i class="vfails">${v.lapses} fallos</i>` : ''}</span>
+        </div>
+        <span class="vd">${esc(v.trans||'—')}</span>
+        ${v.ctx ? `<i class="vctx" lang="en">“${esc(v.ctx)}”</i>` : ''}
+      </div>
+      <div class="vacts">
+        <button class="spk" data-act="speak" data-term="${esc(v.term)}"
+                title="Pronunciar" aria-label="Pronunciar ${esc(v.term)}">🔊</button>
+        ${v.leech ? `<button class="vwake" data-act="wake" data-term="${esc(v.term)}"
+                title="En pausa: reactivar" aria-label="Reactivar ${esc(v.term)}">🐌</button>` : ''}
+        <button class="vdel" data-act="del" data-term="${esc(v.term)}"
+                title="Eliminar" aria-label="Eliminar ${esc(v.term)}">✕</button>
+      </div>
     </div>`).join('');
+  // nothing saved yet means nothing to search, sort, review or export: an empty
+  // list should read as an invitation, not as a control panel
+  ['vocabFoot','vocabAdmin','vocabTools'].forEach(id=>
+    document.getElementById(id).classList.toggle('hidden', vocab.length === 0));
   updateDueBadge();
 }
 function vocabState(v){
@@ -1585,11 +1615,21 @@ function vocabStatsHtml(vocab){
   return bits.map(b=>'<span>'+b+'</span>').join('');
 }
 
+let undoneVocab = null;
 function delVocab(term){
   const i = findVocab(term);
   if(i < 0) return;
   const vocab = DB.vocab;
-  vocab.splice(i, 1); DB.vocab = vocab;
+  const [gone] = vocab.splice(i, 1); DB.vocab = vocab;
+  undoneVocab = { item: gone, at: i };
+  toast('«'+gone.term+'» eliminada', { label:'Deshacer', run: undoDelVocab });
+  renderVocab(); if(current) renderChapter();
+}
+function undoDelVocab(){
+  if(!undoneVocab) return;
+  const vocab = DB.vocab;
+  vocab.splice(Math.min(undoneVocab.at, vocab.length), 0, undoneVocab.item);
+  DB.vocab = vocab; undoneVocab = null;
   renderVocab(); if(current) renderChapter();
 }
 // A suspended word is not a deleted one: the reader may well want it back once
@@ -1614,7 +1654,7 @@ function clearVocab(){
 // Simplified SM-2 with an Anki-style learning phase. Cards are held by
 // reference in revVocab, so grading one and writing the whole array back keeps
 // the schedule in sync.
-let revVocab = null, revQueue = [], revCard = null;
+let revVocab = null, revQueue = [], revCard = null, revTotal = 0;
 let revMode = 'flip', revPhase = 'ask', revVerdict = null, revChosen = '';
 
 // Recognising a word is far easier than producing it, so these run from the
@@ -1788,6 +1828,7 @@ function openReview(){
   // what they have met before comes first: clearing the backlog matters more
   // than meeting yet another new word
   revQueue = shuffle(queue.filter(v=>!isNew(v))).concat(shuffle(queue.filter(isNew)));
+  revTotal = revQueue.length;
   closeModal('vocabModal');
   paintReviewDirection();
   paintReviewMode();
@@ -1843,10 +1884,15 @@ function renderReview(){
   const show = (id, on)=>document.getElementById(id).classList.toggle('hidden', !on);
   show('revDone', done);
   show('revCard', !done);
-  document.getElementById('revProgress').textContent =
-    done ? '' : (revQueue.length + 1) + ' por repasar';
+  resetSwipe();
+  const left = done ? 0 : revQueue.length + 1;
+  revTotal = Math.max(revTotal, left);
+  document.getElementById('revProgress').textContent = done ? '' : left + ' por repasar';
+  document.getElementById('revBar').firstElementChild.style.width =
+    revTotal ? Math.round((revTotal - left) / revTotal * 100) + '%' : '0%';
+  show('revDoneRow', done);
   if(done){
-    ['revShowRow','revGradeRow','revTypeRow','revChoiceRow','revVerdict'].forEach(id=>show(id, false));
+    ['revShowRow','revGradeRow','revTypeRow','revChoiceRow','revVerdict','revHint'].forEach(id=>show(id, false));
     paintDone();
     return;
   }
@@ -1910,6 +1956,7 @@ function renderReview(){
   paintVerdict(card);
   show('revGradeRow', answering);
   if(answering) paintGradeRow();
+  show('revHint', answering && swipeGrades().length > 1);
 }
 
 function markTerm(sentence, term){
@@ -1979,7 +2026,10 @@ function paintDone(){
 function revealCard(){
   if(!revCard || revPhase === 'answer') return;
   // giving up on a word you were asked to produce is an answer too
-  if(TYPED.includes(revMode)) revVerdict = checkAnswer(document.getElementById('revInput').value);
+  if(TYPED.includes(revMode)){
+    revVerdict = checkAnswer(document.getElementById('revInput').value);
+    buzz(revVerdict === 'right' || revVerdict === 'close' ? 14 : [0, 45, 70, 45]);
+  }
   revPhase = 'answer';
   renderReview();
 }
@@ -1988,6 +2038,7 @@ function chooseOption(text){
   if(!revCard || revPhase === 'answer') return;
   revChosen = text;
   revVerdict = normalizeAnswer(text) === normalizeAnswer(answerText(revCard)) ? 'right' : 'wrong';
+  buzz(revVerdict === 'right' ? 14 : [0, 45, 70, 45]);
   revPhase = 'answer';
   renderReview();
 }
@@ -2063,7 +2114,7 @@ function gradeCard(grade){
 
 function closeReview(){
   closeModal('reviewModal');
-  revCard = null; revQueue = [];
+  revCard = null; revQueue = []; revTotal = 0;
   updateDueBadge();
   if(document.getElementById('vocabModal').style.display === 'flex') renderVocab();
   if(current) renderChapter();
@@ -2087,6 +2138,68 @@ function goToSource(){
     if(first) first.scrollIntoView({ block:'center' });
   });
 }
+
+/* ---- SWIPING ----
+   With the answer showing, dragging the card left says "otra vez" and right
+   says "bien" -- the same two buttons, reachable without looking. Only the
+   grades the card is actually offering can be swiped to, so an exercise the
+   app graded itself cannot be talked out of its verdict. */
+const SWIPE_ARM = 12, SWIPE_TAKE = 72;
+let swipeFrom = null, swipeDX = 0, swiping = false;
+
+function swipeGrades(){
+  if(revPhase !== 'answer' || !revCard) return [];
+  return [...document.querySelectorAll('#revGradeRow button')]
+    .filter(b=>!b.classList.contains('hidden'))
+    .map(b=>Number(b.dataset.arg));
+}
+function resetSwipe(){
+  const el = document.getElementById('revCard');
+  swipeFrom = null; swipeDX = 0; swiping = false;
+  el.classList.remove('settling','swipe-again','swipe-good');
+  el.style.transform = '';
+}
+function paintSwipe(dx){
+  const el = document.getElementById('revCard');
+  const grades = swipeGrades();
+  const take = dx < 0 ? 0 : 1;
+  const armed = Math.abs(dx) > SWIPE_TAKE && grades.includes(take);
+  el.style.transform = 'translateX('+dx.toFixed(1)+'px) rotate('+(dx / 40).toFixed(2)+'deg)';
+  el.classList.toggle('swipe-again', armed && take === 0);
+  el.classList.toggle('swipe-good', armed && take === 1);
+}
+const revCardEl = document.getElementById('revCard');
+revCardEl.addEventListener('touchstart', e=>{
+  if(e.touches.length !== 1 || swipeGrades().length < 2) return;
+  const t = e.touches[0];
+  swipeFrom = { x:t.clientX, y:t.clientY };
+  swipeDX = 0; swiping = false;
+  revCardEl.classList.remove('settling');
+}, { passive:true });
+revCardEl.addEventListener('touchmove', e=>{
+  if(!swipeFrom) return;
+  const t = e.touches[0];
+  const dx = t.clientX - swipeFrom.x, dy = t.clientY - swipeFrom.y;
+  // the body still has to scroll: only a clearly sideways drag is taken
+  if(!swiping && (Math.abs(dx) < SWIPE_ARM || Math.abs(dx) < Math.abs(dy))) return;
+  swiping = true;
+  swipeDX = dx;
+  e.preventDefault();
+  paintSwipe(dx);
+}, { passive:false });
+['touchend','touchcancel'].forEach(ev=>revCardEl.addEventListener(ev, ()=>{
+  if(!swipeFrom) return;
+  const dx = swiping ? swipeDX : 0;
+  const take = dx < 0 ? 0 : 1;
+  swipeFrom = null; swiping = false;
+  revCardEl.classList.add('settling');
+  revCardEl.style.transform = '';
+  revCardEl.classList.remove('swipe-again','swipe-good');
+  if(Math.abs(dx) > SWIPE_TAKE && swipeGrades().includes(take)){
+    buzz(12);
+    gradeIfAllowed(take);
+  }
+}));
 
 // always the English side, whichever way round the card is shown
 document.getElementById('revSpk').addEventListener('click', ()=>{
@@ -2285,6 +2398,7 @@ function openModal(id){
   const modal = document.getElementById(id);
   focusBeforeModal = document.activeElement;
   modal.style.display = 'flex';
+  lockScroll();
   const first = modal.querySelector(FOCUSABLE);
   if(first) first.focus();
 }
@@ -2292,8 +2406,14 @@ function closeModal(id){
   const modal = document.getElementById(id);
   if(!modal || modal.style.display === 'none') return;
   modal.style.display = 'none';
+  lockScroll();
   if(focusBeforeModal && document.contains(focusBeforeModal)) focusBeforeModal.focus();
   focusBeforeModal = null;
+}
+// A full-screen sheet over a page that still scrolls underneath is how a phone
+// loses your place in the book while you are reviewing.
+function lockScroll(){
+  document.body.classList.toggle('modal-open', openModals().length > 0);
 }
 document.addEventListener('keydown', e=>{
   if(e.key !== 'Tab') return;
@@ -2306,7 +2426,10 @@ document.addEventListener('keydown', e=>{
   else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
 });
 [...document.querySelectorAll('.modal-bg')].forEach(m=>{
-  m.addEventListener('click', e=>{ if(e.target===m) m.style.display='none'; });
+  m.addEventListener('click', e=>{
+    if(e.target !== m) return;
+    m.id === 'reviewModal' ? closeReview() : closeModal(m.id);
+  });
 });
 
 /* ============ DROPZONE ============ */
